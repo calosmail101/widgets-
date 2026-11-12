@@ -1,0 +1,264 @@
+package dev.palanca.launcher.ui
+
+import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import dev.palanca.launcher.Env
+import dev.palanca.launcher.data.Backup
+import dev.palanca.launcher.data.Config
+import dev.palanca.launcher.icons.ICON_SHAPES
+import dev.palanca.launcher.input.Btn
+import dev.palanca.launcher.input.PadEvent
+import dev.palanca.launcher.system.ActionId
+import dev.palanca.launcher.system.Actions
+import dev.palanca.launcher.system.Trigger
+
+sealed class SRow(val title: String)
+class Toggle(title: String, val get: (Config) -> Boolean, val set: (Config, Boolean) -> Config) : SRow(title)
+class Choice(
+    title: String, val options: () -> List<Pair<String, String>>, val get: (Config) -> String,
+    val swatches: Boolean = false, val set: (Config, String) -> Config,
+) : SRow(title)
+class Range(
+    title: String, val min: Int, val max: Int, val step: Int, val unit: String,
+    val get: (Config) -> Int, val set: (Config, Int) -> Config,
+) : SRow(title)
+class Act(title: String, val value: () -> String = { "" }, val run: () -> Unit) : SRow(title)
+class Section(val title: String, val note: String, val rows: List<SRow>)
+
+private fun sections(): List<Section> = listOf(
+    Section(
+        "Reloj", "Así se ve en Inicio",
+        listOf(
+            Choice("Estilo", { CLOCK_STYLES }, { it.look.clockStyle }) { c, v -> c.look { copy(clockStyle = v) } },
+            Toggle("Formato de 24 horas", { it.look.clock24 }) { c, v -> c.look { copy(clock24 = v) } },
+            Toggle("Mostrar fecha", { it.look.clockDate }) { c, v -> c.look { copy(clockDate = v) } },
+            Toggle("Segundos", { it.look.clockSeconds }) { c, v -> c.look { copy(clockSeconds = v) } },
+            Choice("Color de acento", { ACCENTS.map { it.first.toString() to it.second } }, { it.look.accent.toString() }, swatches = true) { c, v ->
+                c.look { copy(accent = v.toLong()) }
+            },
+        ),
+    ),
+    Section(
+        "Iconos", "Ajustes para todas las apps. Cada icono se cambia con X sobre la app",
+        listOf(
+            Choice("Forma", { ICON_SHAPES }, { it.look.iconShape }) { c, v -> c.look { copy(iconShape = v) } },
+            Choice(
+                "Paquete de iconos", { listOf("" to "Originales") + Env.icons.packs.list().map { it.pkg to it.name } },
+                { it.look.iconPack ?: "" },
+            ) { c, v -> c.look { copy(iconPack = v.ifEmpty { null }) } },
+            Range("Tamaño", 70, 130, 5, "%", { (it.look.iconScale * 100 + 0.5f).toInt() }) { c, v -> c.look { copy(iconScale = v / 100f) } },
+            Toggle("Mostrar nombres", { it.look.labels }) { c, v -> c.look { copy(labels = v) } },
+            Act("Restablecer iconos personalizados", { "${Env.cfg.value.icons.size} cambiados" }) {
+                Env.cfg.update { it.copy(icons = emptyMap()) }
+            },
+        ),
+    ),
+    Section(
+        "Fondo", "Los fondos animados solo se mueven con Inicio en pantalla",
+        listOf(
+            Choice("Tipo", { WALLPAPERS }, { it.look.wallpaper }) { c, v -> c.look { copy(wallpaper = v) } },
+            Act("Elegir imagen", { if (Env.cfg.value.look.wallpaperFile != null) "cambiar" else "ninguna" }) { Backup.pickWallpaper() },
+            Range("Oscurecer", 0, 90, 5, "%", { it.look.wallpaperDim }) { c, v -> c.look { copy(wallpaperDim = v) } },
+        ),
+    ),
+    Section(
+        "Rejilla y tamaño", "Cuántas apps caben y cómo de grandes",
+        listOf(
+            Range("Columnas del cajón", 5, 9, 1, "", { it.look.drawerCols }) { c, v -> c.look { copy(drawerCols = v) } },
+            Range("Iconos de Inicio", 64, 104, 4, "", { it.look.dockSize }) { c, v -> c.look { copy(dockSize = v) } },
+        ),
+    ),
+    Section(
+        "Tarjetas", "Los widgets de Android se añaden en Inicio, página 02 (R1)",
+        listOf(
+            Toggle("Continuar con la última app", { it.look.cardContinue }) { c, v -> c.look { copy(cardContinue = v) } },
+            Toggle("Batería", { it.look.cardBattery }) { c, v -> c.look { copy(cardBattery = v) } },
+            Toggle("Almacenamiento", { it.look.cardStorage }) { c, v -> c.look { copy(cardStorage = v) } },
+        ),
+    ),
+    Section(
+        "Mandos", "Los atajos funcionan en Inicio y en el cajón",
+        listOf<SRow>(Toggle("Diseño Nintendo (intercambia A/B y X/Y)", { it.swapAB }) { c, v -> c.copy(swapAB = v) }) +
+            Trigger.entries.map { trigger ->
+                Choice(trigger.title, { ActionId.entries.map { it.name to it.title } }, { Actions.actionFor(trigger).name }) { c, v ->
+                    c.copy(shortcuts = c.shortcuts + (trigger.name to v))
+                }
+            } + listOf(
+                Toggle("Sonidos", { it.sound }) { c, v -> c.copy(sound = v) },
+                Toggle("Vibración", { it.haptics }) { c, v -> c.copy(haptics = v) },
+                Act("Puntero con mando (L3 + R3)", { if (Actions.pointerEnabled()) "activado" else "desactivado" }) {
+                    Actions.open(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                },
+            ),
+    ),
+    Section(
+        "Copia de seguridad", "Un tema guarda el aspecto; la copia completa lo guarda todo",
+        listOf(
+            Act("Exportar tema") { Backup.export(themeOnly = true) },
+            Act("Exportar copia completa") { Backup.export(themeOnly = false) },
+            Act("Importar tema o copia") { Backup.import() },
+        ),
+    ),
+    Section(
+        "Sistema", "Palanca ${runCatching { Env.ctx.packageManager.getPackageInfo(Env.ctx.packageName, 0).versionName }.getOrNull() ?: ""}",
+        listOf(
+            Act("Usar Palanca como pantalla de inicio", { "elegir" }) { Actions.open(Settings.ACTION_HOME_SETTINGS) },
+            Act("Ajustes de Android", { "abrir" }) { Actions.open(Settings.ACTION_SETTINGS) },
+            Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
+        ),
+    ),
+)
+
+class SettingsScreen : Screen {
+    private val all = sections()
+    private var section by mutableIntStateOf(0)
+    private var zone by mutableIntStateOf(0) // 0 = secciones, 1 = filas
+    private var row by mutableIntStateOf(0)
+
+    private fun step(r: SRow, dir: Int) {
+        when (r) {
+            is Toggle -> Env.cfg.update { r.set(it, !r.get(it)) }
+            is Choice -> {
+                val options = r.options()
+                if (options.isEmpty()) return
+                val i = options.indexOfFirst { it.first == r.get(Env.cfg.value) }.coerceAtLeast(0)
+                val next = options[(i + dir + options.size) % options.size].first
+                Env.cfg.update { r.set(it, next) }
+            }
+            is Range -> Env.cfg.update { r.set(it, (r.get(it) + dir * r.step).coerceIn(r.min, r.max)) }
+            is Act -> r.run()
+        }
+    }
+
+    override fun onPad(e: PadEvent): Boolean {
+        if (e.long) return true
+        val rows = all[section].rows
+        row = row.coerceIn(0, rows.lastIndex)
+        val current = rows[row]
+        when (e.btn) {
+            Btn.L1 -> { section = (section + all.size - 1) % all.size; row = 0 }
+            Btn.R1 -> { section = (section + 1) % all.size; row = 0 }
+            Btn.UP -> if (zone == 0) { section = (section + all.size - 1) % all.size; row = 0 } else row = (row + rows.size - 1) % rows.size
+            Btn.DOWN -> if (zone == 0) { section = (section + 1) % all.size; row = 0 } else row = (row + 1) % rows.size
+            Btn.RIGHT -> if (zone == 0) zone = 1 else if (current is Choice || current is Range) step(current, +1)
+            Btn.LEFT -> if (zone == 1) { if (current is Choice || current is Range) step(current, -1) else zone = 0 }
+            Btn.A -> if (zone == 0) zone = 1 else step(current, +1)
+            Btn.B -> if (zone == 1) zone = 0 else Env.nav.pop()
+            Btn.START -> Env.nav.pop()
+            else -> Unit
+        }
+        return true
+    }
+
+    @Composable
+    override fun Content() {
+        val cfg = LocalCfg.current
+        val accent = LocalAccent.current
+        val current = all[section]
+        val list = rememberLazyListState()
+        LaunchedEffect(row, section) { list.animateScrollToItem((row - 4).coerceAtLeast(0)) }
+        Frame(
+            "START", "Personalizar", current.note,
+            listOf("A" to "Cambiar", "◀ ▶" to "Ajustar", "L1 R1" to "Sección", "B" to "Volver"),
+        ) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                Column(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    all.forEachIndexed { i, s ->
+                        val on = i == section
+                        Row(
+                            Modifier.fillMaxWidth().height(48.dp)
+                                .background(if (on) accent else Color.Transparent, chamfer(12.dp))
+                                .brackets(on && zone == 0, P.Ink, gap = 3.dp, len = 10.dp, stroke = 2.5.dp)
+                                .tap { section = i; row = 0; zone = 1 }.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            T("0${i + 1}", 12, if (on) P.OnAccent else P.Dim, FontWeight.Bold, mono = true)
+                            Spacer(Modifier.width(12.dp))
+                            T(s.title, 16, if (on) P.OnAccent else P.Dim, if (on) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                }
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    if (section == 0) {
+                        Panel(Modifier.fillMaxWidth().height(132.dp)) {
+                            val now by rememberNow(cfg.look.clockSeconds)
+                            Row(Modifier.fillMaxSize().padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
+                                ClockView(cfg.look, 70.dp, now)
+                                Spacer(Modifier.weight(1f))
+                                if (cfg.look.clockDate) Label(dateText(now), P.Ink, size = 13)
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                    }
+                    LazyColumn(state = list, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        itemsIndexed(current.rows) { i, r ->
+                            val on = zone == 1 && i == row
+                            val tap = Modifier.tap { zone = 1; row = i; step(r, +1) }
+                            when (r) {
+                                is Toggle -> ListRow(r.title, "", on, tap) { Switch(r.get(cfg)) }
+                                is Choice -> {
+                                    val options = r.options()
+                                    val value = r.get(cfg)
+                                    if (r.swatches) ListRow(r.title, "", on, tap) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            options.forEach { (id, _) ->
+                                                val picked = id == value
+                                                Box(
+                                                    Modifier.size(if (picked) 26.dp else 18.dp)
+                                                        .then(if (picked) Modifier.border(2.dp, P.Ink, chamfer(7.dp)).padding(4.dp) else Modifier)
+                                                        .background(Color(id.toLong()), chamfer(if (picked) 5.dp else 6.dp))
+                                                )
+                                            }
+                                        }
+                                    } else ListRow(r.title, options.firstOrNull { it.first == value }?.second ?: "—", on, tap, arrows = true)
+                                }
+                                is Range -> ListRow(r.title, "${r.get(cfg)}${if (r.unit.isEmpty()) "" else " " + r.unit}", on, tap, arrows = true)
+                                is Act -> ListRow(r.title, r.value(), on, tap)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun Switch(on: Boolean) {
+        val accent = LocalAccent.current
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Label(if (on) "Sí" else "No", if (on) accent else P.Dim)
+            Spacer(Modifier.width(12.dp))
+            Row(Modifier.width(44.dp).height(20.dp).border(1.5.dp, if (on) accent else P.Dim).padding(3.dp)) {
+                if (on) Spacer(Modifier.weight(1f))
+                Box(Modifier.width(17.dp).fillMaxHeight().background(if (on) accent else P.Dim))
+            }
+        }
+    }
+}

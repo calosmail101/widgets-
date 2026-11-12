@@ -1,0 +1,5 @@
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.**
+-keep,includedescriptorclasses class dev.palanca.launcher.**$$serializer { *; }
+-keepclassmembers class dev.palanca.launcher.** { *** Companion; }
+-keepclasseswithmembers class dev.palanca.launcher.** { kotlinx.serialization.KSerializer serializer(...); }
