@@ -44,6 +44,8 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.TextUnit
 import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
@@ -150,6 +152,9 @@ fun fontTheme(id: String) = FONT_THEMES.firstOrNull { it.id == id } ?: FONT_THEM
 
 val LocalFonts = staticCompositionLocalOf { FONT_THEMES[0] }
 
+/** Multiplicador del tamaño de todo el texto (ajuste "Tamaño del texto"). */
+val LocalTextScale = staticCompositionLocalOf { 1f }
+
 val LocalAccent = compositionLocalOf { Color(0xFFFF6A2B) }
 val LocalCfg = compositionLocalOf { Config() }
 
@@ -171,12 +176,32 @@ interface Screen {
     fun onStick(x: Float, y: Float) {}
 }
 
+/** Pantalla que tiene animación de salida: [closing] pasa a true y poco después se retira. */
+interface Closable {
+    var closing: Boolean
+}
+
 class Navigator {
     val stack = mutableStateListOf<Screen>()
-    val top: Screen? get() = stack.lastOrNull()
+
+    /** La pantalla que recibe el mando: la de más arriba que no se esté cerrando. */
+    val top: Screen? get() = stack.lastOrNull { !(it is Closable && it.closing) }
+
     fun push(s: Screen) { stack.add(s) }
-    fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
+
+    fun pop() {
+        val screen = top ?: return
+        if (stack.indexOf(screen) <= 0) return
+        if (screen is Closable) {
+            // Deja que la ventana se recoja antes de quitarla.
+            screen.closing = true
+            dev.palanca.launcher.Env.scope.launch { kotlinx.coroutines.delay(EXIT_MS.toLong()); stack.remove(screen) }
+        } else stack.remove(screen)
+    }
+
     fun home() { while (stack.size > 1) stack.removeAt(stack.lastIndex) }
+
+    companion object { const val EXIT_MS = 230 }
 }
 
 // ---- Piezas comunes ---------------------------------------------------------------------
@@ -188,15 +213,16 @@ fun T(
     align: TextAlign = TextAlign.Start, outline: Float = 0f, tight: Boolean = false,
 ) {
     val fonts = LocalFonts.current
+    val scale = fonts.scale * LocalTextScale.current
     BasicText(
         text, modifier,
         style = TextStyle(
-            color = color, fontSize = (size * fonts.scale).sp, fontFamily = if (mono) fonts.mono else fonts.ui,
+            color = color, fontSize = (size * scale).sp, fontFamily = if (mono) fonts.mono else fonts.ui,
             fontWeight = weight, letterSpacing = spacing.sp, textAlign = align,
             drawStyle = if (outline > 0f) Stroke(outline, join = StrokeJoin.Round) else null,
             // "tight": sin el relleno que la fuente añade arriba y abajo, que descentra las letras sueltas.
             platformStyle = if (tight) PlatformTextStyle(includeFontPadding = false) else null,
-            lineHeight = if (tight) (size * fonts.scale).sp else TextUnit.Unspecified,
+            lineHeight = if (tight) (size * scale).sp else TextUnit.Unspecified,
             lineHeightStyle = if (tight) LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both) else null,
         ),
         maxLines = maxLines, overflow = TextOverflow.Ellipsis,
@@ -297,7 +323,15 @@ fun Modifier.focusScale(on: Boolean, to: Float = 1.12f): Modifier {
 
 @Composable
 fun Panel(modifier: Modifier = Modifier, cut: Dp = 16.dp, content: @Composable BoxScope.() -> Unit) =
-    Box(modifier.background(P.Panel, chamfer(cut)), content = content)
+    Box(modifier.glassPanel(chamfer(cut)), content = content)
+
+/** Fondo de las piezas de Inicio: translúcido con un filo de luz si el cristal está activo; opaco si no. */
+fun Modifier.glassPanel(shape: Shape): Modifier = composed {
+    if (LocalCfg.current.look.glass) {
+        background(Color.White.copy(alpha = 0.075f), shape)
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.26f), Color.White.copy(alpha = 0.04f))), shape)
+    } else background(P.Panel, shape)
+}
 
 /** Barra de segmentos: nivel de batería, espacio, deslizadores. */
 @Composable
@@ -315,8 +349,9 @@ fun Glyph(name: String, primary: Boolean = false) {
     val round = name.length == 1
     val shape = if (round) CircleShape else RoundedCornerShape(7.dp)
     val ink = if (primary) P.OnAccent else P.Dim
+    val side = 24.dp * LocalTextScale.current.coerceAtLeast(1f)
     Box(
-        Modifier.height(24.dp).defaultMinSize(minWidth = 24.dp)
+        Modifier.height(side).defaultMinSize(minWidth = side)
             .then(if (primary) Modifier.background(accent, shape) else Modifier.border(1.5.dp, P.Dim, shape))
             .padding(horizontal = if (round) 0.dp else 7.dp),
         contentAlignment = Alignment.Center,
@@ -344,7 +379,7 @@ fun Window(modifier: Modifier = Modifier, content: @Composable ColumnScope.() ->
     val glass = LocalCfg.current.look.glass
     val shape = RoundedCornerShape(36.dp)
     Column(
-        modifier.enter(46.dp, 0.88f, 380)
+        modifier
             .background(if (glass) Color(0xFF1B1C22).copy(alpha = 0.52f) else Color(0xFF191A1F), shape)
             .then(
                 if (glass) Modifier.border(
@@ -356,11 +391,41 @@ fun Window(modifier: Modifier = Modifier, content: @Composable ColumnScope.() ->
     )
 }
 
-/** Velo oscuro detrás de las ventanas; tocarlo las cierra. */
+/**
+ * Capa de las ventanas: un velo oscuro y, encima, el contenido creciendo como una gota desde
+ * [origin] (un punto de la pantalla en fracciones 0..1). Al cerrarse ([closing]) se recoge en
+ * ese mismo punto. Tocar el velo llama a [onDismiss].
+ */
 @Composable
-fun Scrim(onDismiss: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+fun Popup(origin: TransformOrigin, closing: Boolean, onDismiss: () -> Unit, content: @Composable BoxScope.() -> Unit) {
     val glass = LocalCfg.current.look.glass
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (glass) 0.38f else 0.62f)).tap { onDismiss() }, content = content)
+    val grow = remember { Animatable(0f) }
+    val veil = remember { Animatable(0f) }
+    LaunchedEffect(closing) {
+        if (closing) {
+            launch { veil.animateTo(0f, tween(Navigator.EXIT_MS)) }
+            grow.animateTo(0f, tween(Navigator.EXIT_MS, easing = CubicBezierEasing(0.5f, 0f, 0.9f, 0.4f)))
+        } else {
+            launch { veil.animateTo(1f, tween(220)) }
+            // Muelle con poco amortiguamiento: la gota se pasa un poco de tamaño y se asienta.
+            grow.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 300f))
+        }
+    }
+    Box(
+        Modifier.fillMaxSize()
+            .drawBehind { drawRect(Color.Black.copy(alpha = (if (glass) 0.38f else 0.62f) * veil.value)) }
+            .tap { onDismiss() }
+    ) {
+        Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                val t = grow.value
+                scaleX = t.coerceAtLeast(0.02f); scaleY = t.coerceAtLeast(0.02f)
+                alpha = (t * 2.2f).coerceIn(0f, 1f)
+                transformOrigin = origin
+            },
+            content = content,
+        )
+    }
 }
 
 /** Leyenda de botones al pie. La primera pareja es la acción principal. */
@@ -409,7 +474,7 @@ fun ListRow(
 ) {
     val accent = LocalAccent.current
     Row(
-        modifier.fillMaxWidth().height(height)
+        modifier.fillMaxWidth().height(height * LocalTextScale.current.coerceAtLeast(1f))
             .background(if (selected) P.Line else Color.Transparent, chamfer(12.dp))
             .brackets(selected, accent, gap = 2.dp, stroke = 2.5.dp, radius = 16.8.dp)
             .padding(horizontal = 18.dp),

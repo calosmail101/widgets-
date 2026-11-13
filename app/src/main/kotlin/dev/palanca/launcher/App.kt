@@ -24,7 +24,7 @@ interface HostBridge {
     val activity: Activity
     fun pickImage(onResult: (Uri?) -> Unit)
     fun createDocument(name: String, mime: String, onResult: (Uri?) -> Unit)
-    fun openDocument(onResult: (Uri?) -> Unit)
+    fun openDocument(types: Array<String>, onResult: (Uri?) -> Unit)
     fun addWidget(provider: android.appwidget.AppWidgetProviderInfo)
     fun pickAudio(onResult: (List<Uri>) -> Unit)
 }

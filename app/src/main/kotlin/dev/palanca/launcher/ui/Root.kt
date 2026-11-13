@@ -24,7 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Alto de la pantalla en unidades de diseño. */
-const val DESIGN_HEIGHT = 720f
+const val DESIGN_HEIGHT = 660f
 
 @Composable
 fun PalancaRoot() {
@@ -49,6 +49,7 @@ fun PalancaRoot() {
             LocalAccent provides Color(cfg.look.accent),
             LocalIconGen provides iconGen,
             LocalFonts provides fontTheme(cfg.look.font),
+            LocalTextScale provides cfg.look.textScale.coerceIn(90, 150) / 100f,
         ) {
             val accentColor = Color(cfg.look.accent)
             SideEffect { P.accentChanged(accentColor) }
@@ -67,6 +68,8 @@ fun PalancaRoot() {
             }
             val stack = Env.nav.stack
             val base = stack.indexOfLast { !it.overlay }.coerceAtLeast(0)
+            // Una ventana que se está cerrando ya no cuenta como "encima": lo de debajo recupera la nitidez.
+            val covered = stack.indexOfLast { it.overlay && !(it is Closable && it.closing) }
             // Música de fondo: solo con Inicio o el cajón como pantalla de base y el launcher delante.
             val foreground by Env.foreground.collectAsState()
             val calm = stack.getOrNull(base).let { it is HomeScreen || it is DrawerScreen }
@@ -79,12 +82,11 @@ fun PalancaRoot() {
                 // Inicio no se anima (ya está ahí) y las ventanas traen su propia entrada.
                 val motion = when {
                     screen is HomeScreen || screen.overlay -> Modifier
-                    screen is DrawerScreen -> Modifier.enter(150.dp, 0.96f, 460)
                     else -> Modifier.enter(90.dp, 0.93f, 440)
                 }
                 // Cristal: lo que queda debajo de una ventana se desenfoca (Android 12+; antes no hace nada).
                 // Se amplía un 8 % para que el borde oscuro que deja el desenfoque quede fuera de la pantalla.
-                val depth = if (cfg.look.glass && i < stack.lastIndex) Modifier.graphicsLayer { scaleX = 1.08f; scaleY = 1.08f }.blur(26.dp) else Modifier
+                val depth = if (cfg.look.glass && i < covered) Modifier.graphicsLayer { scaleX = 1.08f; scaleY = 1.08f }.blur(26.dp) else Modifier
                 key(screen) { Box(Modifier.fillMaxSize().then(motion).then(depth)) { screen.Content() } }
             }
         }

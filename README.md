@@ -1,4 +1,4 @@
-# Palanca
+# Heaven
 
 Launcher de Android pensado para consolas portátiles como la **Retroid Pocket 6**: es la pantalla
 de inicio que muestra todas tus apps (YouTube, Play Store, emuladores, Ajustes…) y se maneja
@@ -28,7 +28,7 @@ entera con **sticks, cruceta y botones**, sin tocar la pantalla. También funcio
 
 1. Descarga `palanca.apk` desde **Releases** de este repositorio (se genera solo con cada cambio en `main`).
 2. Ábrelo en la consola y permite instalar apps de origen desconocido.
-3. Pulsa Home y elige **Palanca** → *Siempre*. Para volver al launcher anterior: Ajustes de Android → Apps → Apps predeterminadas → App de inicio.
+3. Pulsa Home y elige **Heaven** → *Siempre*. Para volver al launcher anterior: Ajustes de Android → Apps → Apps predeterminadas → App de inicio.
 
 Las actualizaciones se instalan encima y conservan tu configuración.
 
@@ -43,20 +43,20 @@ Las actualizaciones se instalan encima y conservan tu configuración.
 | B | — | Volver |
 | L1 / R1 | Cambiar de página (Inicio / Widgets) | Cambiar de categoría |
 | Stick derecho | Reordenar la app fijada | Saltar tres filas |
-| START | Personalizar | Personalizar |
-| SELECT | Panel rápido | Fijar / quitar de Inicio |
+| START | Custom | Custom |
+| SELECT | CNTRL (panel rápido) | Fijar / quitar de Inicio |
 | Abajo (en la barra) | Abrir el cajón | — |
 
-Atajos por defecto (se cambian en *Personalizar › Mandos*): mantener SELECT → Ajustes de Android,
+Atajos por defecto (se cambian en *Custom › Mandos*): mantener SELECT → Ajustes de Android,
 mantener START → última app, L2 → panel rápido, R2 → apps recientes, L3 → buscar, R3 → notificaciones.
 
-Si A y B te salen cruzados, activa *Personalizar › Mandos › Diseño Nintendo*.
+Si A y B te salen cruzados, activa *Custom › Mandos › Diseño Nintendo*.
 
 ### Puntero con mando
 
-Actívalo en *Personalizar › Mandos › Puntero con mando* (abre los ajustes de accesibilidad de Android).
+Actívalo en *Custom › Mandos › Puntero con mando* (abre los ajustes de accesibilidad de Android).
 Después, en cualquier app: **mantén L3 + R3** para encender o apagar el puntero, o elige otro botón en
-*Personalizar › Mandos › Botón del puntero* (por ejemplo un botón trasero al que hayas asignado una tecla).
+*Custom › Mandos › Botón del puntero* (por ejemplo un botón trasero al que hayas asignado una tecla).
 Con el puntero encendido: stick izquierdo o cruceta = mover · A = tocar · X = toque largo · B = atrás ·
 stick derecho o L1/R1 = desplazar · START = salir. Apagado no intercepta nada, así que los juegos reciben el mando intacto.
 Mientras está encendido, la app de debajo deja de recibir el mando (lo recibe el puntero).

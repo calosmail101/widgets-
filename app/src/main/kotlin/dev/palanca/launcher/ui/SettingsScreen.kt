@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.TransformOrigin
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.Backup
 import dev.palanca.launcher.data.Config
@@ -59,7 +61,8 @@ private fun sections(): List<Section> = listOf(
     Section(
         "Tema", "Fuente y color de toda la interfaz",
         listOf(
-            Toggle("Ventanas de cristal", { it.look.glass }) { c, v -> c.look { copy(glass = v) } },
+            Toggle("Ventanas y piezas de cristal", { it.look.glass }) { c, v -> c.look { copy(glass = v) } },
+            Range("Tamaño del texto", 100, 140, 4, "%", { it.look.textScale }) { c, v -> c.look { copy(textScale = v) } },
             Choice("Fuente", { FONT_THEMES.map { it.id to it.name } }, { it.look.font }) { c, v -> c.look { copy(font = v) } },
             Choice("Color de acento", { ACCENTS.map { it.first.toString() to it.second } }, { it.look.accent.toString() }, swatches = true) { c, v ->
                 c.look { copy(accent = v.toLong()) }
@@ -85,7 +88,10 @@ private fun sections(): List<Section> = listOf(
                 { it.look.iconPack ?: "" },
             ) { c, v -> c.look { copy(iconPack = v.ifEmpty { null }) } },
             Range("Tamaño", 70, 130, 5, "%", { (it.look.iconScale * 100 + 0.5f).toInt() }) { c, v -> c.look { copy(iconScale = v / 100f) } },
-            Choice("Color de los iconos", { ICON_TINTS }, { it.look.iconTint }) { c, v -> c.look { copy(iconTint = v) } },
+            Choice("Estilo de los iconos", { ICON_TINTS }, { it.look.iconTint }) { c, v -> c.look { copy(iconTint = v) } },
+            Act("Añadir paquete desde un archivo .apk", { "elegir" }) {
+                Env.host?.openDocument(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) { uri -> if (uri != null) Backup.addIconPack(uri) }
+            },
             Toggle("Mostrar nombres", { it.look.labels }) { c, v -> c.look { copy(labels = v) } },
             Act("Conseguir paquetes de iconos", { "Play Store" }) {
                 Actions.open(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("market://search?q=icon%20pack&c=apps"))
@@ -163,18 +169,20 @@ private fun sections(): List<Section> = listOf(
         ),
     ),
     Section(
-        "Sistema", "Palanca ${runCatching { Env.ctx.packageManager.getPackageInfo(Env.ctx.packageName, 0).versionName }.getOrNull() ?: ""}",
+        "Sistema", "Heaven ${runCatching { Env.ctx.packageManager.getPackageInfo(Env.ctx.packageName, 0).versionName }.getOrNull() ?: ""}",
         listOf(
-            Act("Usar Palanca como pantalla de inicio", { "elegir" }) { Actions.open(Settings.ACTION_HOME_SETTINGS) },
+            Act("Usar Heaven como pantalla de inicio", { "elegir" }) { Actions.open(Settings.ACTION_HOME_SETTINGS) },
             Act("Ajustes de Android", { "abrir" }) { Actions.open(Settings.ACTION_SETTINGS) },
             Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
+            Act("Memoria que usa Heaven", { "${android.os.Debug.getPss() / 1024} MB" }) { },
             Act("Exportar diagnóstico del dispositivo", { "guardar .txt" }) { Diagnostics.export() },
         ),
     ),
 )
 
-class SettingsScreen : Screen {
+class SettingsScreen : Screen, Closable {
     override val overlay get() = true
+    override var closing by mutableStateOf(false)
     private val all = sections()
     private var section by mutableIntStateOf(0)
     private var zone by mutableIntStateOf(0) // 0 = secciones, 1 = filas
@@ -222,10 +230,11 @@ class SettingsScreen : Screen {
         val current = all[section]
         val list = rememberLazyListState()
         LaunchedEffect(row, section) { list.animateScrollToItem((row - 4).coerceAtLeast(0)) }
-        Scrim({ Env.nav.pop() }) {
+        // Nace de la esquina superior derecha, del lado del botón START.
+        Popup(TransformOrigin(1f, 0f), closing, { Env.nav.pop() }) {
           Window(Modifier.align(Alignment.Center).width(1120.dp).height(640.dp)) {
             Row(Modifier.padding(start = 8.dp, bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
-                T("Personalizar", 24, weight = FontWeight.Medium)
+                T("Custom", 24, weight = FontWeight.Medium)
                 Spacer(Modifier.width(16.dp))
                 T(current.note, 14, P.Dim, modifier = Modifier.weight(1f).padding(bottom = 3.dp))
             }
@@ -259,7 +268,7 @@ class SettingsScreen : Screen {
                     if (current.title == "Tema") {
                         Panel(Modifier.fillMaxWidth().height(132.dp)) {
                             Column(Modifier.fillMaxSize().padding(horizontal = 26.dp), verticalArrangement = Arrangement.Center) {
-                                T("Palanca · Año 2026 · ¡ñ, á, ü!", 30, weight = FontWeight.Medium)
+                                T("Heaven · Año 2026 · ¡ñ, á, ü!", 30, weight = FontWeight.Medium)
                                 Spacer(Modifier.height(8.dp))
                                 Label("${fontTheme(cfg.look.font).name} — 0123456789", accent, size = 14)
                             }

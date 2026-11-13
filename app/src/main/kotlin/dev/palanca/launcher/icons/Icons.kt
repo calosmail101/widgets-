@@ -43,7 +43,7 @@ val ICON_SHAPES = listOf(
 )
 
 /** Color de los iconos: tal cual, teñidos con el acento sobre fondo oscuro, o en gris. */
-val ICON_TINTS = listOf("normal" to "Originales", "tintado" to "Tintados con el acento", "gris" to "Monocromo")
+val ICON_TINTS = listOf("normal" to "Originales", "burbuja" to "Cristal (burbuja)", "tintado" to "Tintados con el acento", "gris" to "Monocromo")
 
 /** Valor de [dev.palanca.launcher.data.IconOverride.pack] que fuerza el icono de fábrica. */
 const val PACK_ORIGINAL = "original"
@@ -105,19 +105,44 @@ class IconPacks(private val ctx: Context) {
         }
         // Algunas apps se anuncian como paquete pero no traen iconos propios (los generan solo para
         // ciertos launchers): elegirlas no haría nada, así que no se listan.
-        return found.values.filter { mapping(it.pkg).isNotEmpty() || allDrawables(it.pkg).isNotEmpty() }.sortedBy { it.name.lowercase() }
+        File(ctx.filesDir, "packs").listFiles { f -> f.name.endsWith(".apk") }?.forEach { f ->
+            val id = "file:${f.name}"
+            found[id] = IconPack(id, name(id))
+        }
+        // Solo cuentan los paquetes de los que se puede cargar de verdad algún icono.
+        return found.values.filter { pack ->
+            val sample = mapping(pack.pkg).values.firstOrNull() ?: allDrawables(pack.pkg).firstOrNull()
+            sample != null && load(pack.pkg, sample) != null
+        }.sortedBy { it.name.lowercase() }
     }
 
     fun name(pkg: String): String = runCatching {
-        pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
+        (archive(pkg)?.applicationInfo ?: pm.getApplicationInfo(pkg, 0)).loadLabel(pm).toString()
     }.getOrDefault(pkg)
 
-    private fun res(pack: String): Resources? =
-        resources[pack] ?: runCatching { pm.getResourcesForApplication(pack) }.getOrNull()?.also { resources[pack] = it }
+    private val packageNames = ConcurrentHashMap<String, String>()
+
+    /** Archivo de un paquete añadido a mano ("file:nombre.apk"), o null si es una app instalada. */
+    private fun file(pack: String): File? = if (pack.startsWith("file:")) File(ctx.filesDir, "packs/" + pack.removePrefix("file:")) else null
+
+    @Suppress("DEPRECATION")
+    private fun archive(pack: String) = file(pack)?.let { f ->
+        pm.getPackageArchiveInfo(f.path, 0)?.also { it.applicationInfo?.sourceDir = f.path; it.applicationInfo?.publicSourceDir = f.path }
+    }
+
+    /** Nombre de paquete real, que es con el que se buscan los recursos. */
+    private fun pkgOf(pack: String): String =
+        if (!pack.startsWith("file:")) pack else packageNames.getOrPut(pack) { archive(pack)?.packageName ?: pack }
+
+    private fun res(pack: String): Resources? = resources[pack] ?: runCatching {
+        // Un .apk añadido a mano se lee directamente del archivo, sin instalarlo.
+        val info = archive(pack)?.applicationInfo
+        if (info != null) pm.getResourcesForApplication(info) else pm.getResourcesForApplication(pack)
+    }.getOrNull()?.also { resources[pack] = it }
 
     private fun parser(pack: String, name: String): XmlPullParser? {
         val r = res(pack) ?: return null
-        val id = r.getIdentifier(name, "xml", pack)
+        val id = r.getIdentifier(name, "xml", pkgOf(pack))
         if (id != 0) return r.getXml(id)
         return runCatching {
             XmlPullParserFactory.newInstance().newPullParser().apply { setInput(r.assets.open("$name.xml"), "UTF-8") }
@@ -164,12 +189,12 @@ class IconPacks(private val ctx: Context) {
     @Suppress("DEPRECATION")
     fun load(pack: String, drawable: String): Drawable? = runCatching {
         val r = res(pack) ?: return null
-        val id = r.getIdentifier(drawable, "drawable", pack).takeIf { it != 0 }
-            ?: r.getIdentifier(drawable, "mipmap", pack)
+        val id = r.getIdentifier(drawable, "drawable", pkgOf(pack)).takeIf { it != 0 }
+            ?: r.getIdentifier(drawable, "mipmap", pkgOf(pack))
         if (id == 0) null else r.getDrawable(id)
     }.getOrNull()
 
-    fun invalidate() { mappings.clear(); drawables.clear(); resources.clear(); listed = null }
+    fun invalidate() { mappings.clear(); drawables.clear(); resources.clear(); packageNames.clear(); listed = null }
 }
 
 /** Dibuja iconos ya enmascarados a un bitmap y los guarda en caché. */
@@ -217,6 +242,28 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
             }
         }
         return runCatching { pm.getActivityIcon(app.component) }.getOrNull()
+    }
+
+    /** Estilo cristal: el icono dentro de una esfera, con brillo arriba, sombra abajo y un filo de luz. */
+    private fun bubble(content: Bitmap, size: Int): Bitmap {
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val r = size / 2f
+        paint.color = Color.WHITE
+        paint.shader = BitmapShader(content, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        canvas.drawCircle(r, r, r * 0.97f, paint)
+        paint.shader = android.graphics.LinearGradient(0f, size * 0.45f, 0f, size.toFloat(), 0x00000000, 0x59000000, Shader.TileMode.CLAMP)
+        canvas.drawCircle(r, r, r * 0.97f, paint)
+        paint.shader = android.graphics.RadialGradient(
+            r * 0.72f, r * 0.42f, r * 0.95f, intArrayOf(0x80FFFFFF.toInt(), 0x26FFFFFF, 0x00FFFFFF), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP,
+        )
+        canvas.drawCircle(r, r, r * 0.97f, paint)
+        paint.shader = android.graphics.LinearGradient(0f, 0f, 0f, size.toFloat(), 0xCCFFFFFF.toInt(), 0x22FFFFFF, Shader.TileMode.CLAMP)
+        paint.style = Paint.Style.STROKE; paint.strokeWidth = size * 0.022f
+        canvas.drawCircle(r, r, r * 0.955f, paint)
+        paint.style = Paint.Style.FILL; paint.shader = null
+        content.recycle()
+        return out
     }
 
     @Synchronized
@@ -273,7 +320,7 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
             }
             else -> { d.setBounds(0, 0, size, size); d.draw(canvas) }
         }
-        if (tint != "normal" && !tinted) {
+        if (tint != "normal" && tint != "burbuja" && !tinted) {
             // Sin capa monocroma: el icono se pasa a gris y, en "tintado", se multiplica por el acento.
             val gray = android.graphics.ColorMatrix().apply { setSaturation(0f) }
             if (tint == "tintado") gray.postConcat(android.graphics.ColorMatrix().apply {
@@ -286,6 +333,7 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
             Canvas(content).apply { drawColor(0, android.graphics.PorterDuff.Mode.CLEAR); drawBitmap(copy, 0f, 0f, null) }
             copy.recycle()
         }
+        if (tint == "burbuja") return bubble(content, size)
         if (!masked) return content
         // Máscara con borde suavizado: se pinta la forma usando el contenido como textura.
         val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)

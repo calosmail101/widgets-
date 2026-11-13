@@ -29,6 +29,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.foundation.layout.fillMaxHeight
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.Cat
@@ -70,7 +73,9 @@ fun gridMove(sel: Int, count: Int, cols: Int, btn: Btn, rows: Int = 1): Int {
     }.coerceIn(0, count - 1)
 }
 
-class DrawerScreen : Screen {
+class DrawerScreen : Screen, Closable {
+    override val overlay get() = true
+    override var closing by mutableStateOf(false)
     private val created = android.os.SystemClock.uptimeMillis()
     private var tab by mutableIntStateOf(0)
     private var sel by mutableIntStateOf(0)
@@ -121,7 +126,9 @@ class DrawerScreen : Screen {
             if (shownTab != current) { shownTab = current; grid.scrollToItem(target) } else grid.animateScrollToItem(target)
         }
 
-        Column(Modifier.fillMaxSize().background(P.Bg).padding(start = 56.dp, end = 56.dp, top = 30.dp, bottom = 24.dp)) {
+        // Ventana de cristal que nace del icono «Todas las apps» (centro del carrusel) y se recoge en él.
+        Popup(TransformOrigin(0.5f, 0.8f), closing, { Env.nav.pop() }) {
+          Window(Modifier.align(Alignment.Center).fillMaxWidth(0.955f).fillMaxHeight(0.93f)) {
             Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
                 Glyph("L1")
                 Spacer(Modifier.width(14.dp))
@@ -147,8 +154,8 @@ class DrawerScreen : Screen {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     LazyVerticalGrid(
                         GridCells.Fixed(cols), Modifier.fillMaxSize(), state = grid,
-                        contentPadding = PaddingValues(top = 30.dp, bottom = 40.dp),
-                        verticalArrangement = Arrangement.spacedBy(52.dp),
+                        contentPadding = PaddingValues(top = 26.dp, bottom = 30.dp),
+                        verticalArrangement = Arrangement.spacedBy(40.dp),
                     ) {
                         itemsIndexed(items, key = { _, a -> a.key }, contentType = { _, _ -> "app" }) { i, app ->
                             // Al abrir el cajón los iconos entran en diagonal, uno tras otro; después ya no se animan.
@@ -162,11 +169,6 @@ class DrawerScreen : Screen {
                             }
                         }
                     }
-                    // La fila que asoma por abajo se funde con el fondo: indica que hay más sin cortar en seco.
-                    Box(
-                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(64.dp)
-                            .background(Brush.verticalGradient(listOf(Color.Transparent, P.Bg)))
-                    )
                 }
             }
             val row = if (items.isEmpty()) 0 else sel / cols + 1
@@ -175,6 +177,7 @@ class DrawerScreen : Screen {
                 listOf("A" to "Abrir", "B" to "Volver", "X" to "Opciones", "SELECT" to "Fijar en Inicio"),
                 left = "${items.size} apps · fila $row de $rows",
             )
+          }
         }
     }
 }

@@ -40,7 +40,7 @@ fun statList(cfg: Config): List<Metric> = cfg.look.stats.mapNotNull(Metric::of).
 
 /** Tamaño efectivo: en automático se encoge según cuántas haya, para que quepan todas. */
 fun statSize(look: Look, count: Int): String =
-    if (look.statSize != "auto") look.statSize else if (count <= 4) "grande" else if (count <= 9) "mediano" else "mini"
+    if (look.statSize != "auto") look.statSize else if (count <= 4) "grande" else if (count <= 6) "mediano" else "mini"
 
 fun statCols(size: String) = when (size) { "grande" -> 2; "mediano" -> 3; else -> 4 }
 
@@ -85,13 +85,24 @@ private fun StatTile(
         Row(
             Modifier.fillMaxWidth().padding(
                 horizontal = if (big) 18.dp else if (mini) 9.dp else 12.dp,
-                vertical = if (big) 14.dp else if (mini) 7.dp else 10.dp,
+                vertical = if (big) 11.dp else if (mini) 6.dp else 9.dp,
             ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
                 val ringed = style == "anillo"
-                Label(metric.title, size = if (big) 12 else if (mini) 9 else 10)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Label(metric.title, size = if (big) 12 else if (mini) 9 else 10)
+                    if (metric == Metric.BAT_TEMP) {
+                        // Mini batería: deja claro que esta temperatura es la de la batería.
+                        Canvas(Modifier.padding(start = 6.dp).size(if (big) 18.dp else 14.dp, if (big) 10.dp else 8.dp)) {
+                            val w = this.size.width * 0.88f
+                            drawRoundRect(P.Dim, size = Size(w, this.size.height), cornerRadius = androidx.compose.ui.geometry.CornerRadius(this.size.height * 0.25f), style = Stroke(1.3.dp.toPx()))
+                            drawRect(P.Dim, Offset(w, this.size.height * 0.3f), Size(this.size.width - w, this.size.height * 0.4f))
+                            drawRect(P.Dim, Offset(this.size.height * 0.28f, this.size.height * 0.28f), Size(w * 0.5f, this.size.height * 0.44f))
+                        }
+                    }
+                }
                 Spacer(Modifier.height(if (big) 8.dp else if (mini) 2.dp else 4.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     T(r.value, valueSize, if (r.available) P.Ink else P.Dim, FontWeight.Medium)

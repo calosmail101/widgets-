@@ -195,9 +195,9 @@ class MainActivity : ComponentActivity(), HostBridge {
         runCatching { (if (mime == "text/plain") textCreator else zipCreator).launch(name) }.onFailure { Actions.toast("No hay ningún gestor de archivos disponible") }
     }
 
-    override fun openDocument(onResult: (Uri?) -> Unit) {
+    override fun openDocument(types: Array<String>, onResult: (Uri?) -> Unit) {
         onOpened = onResult
-        runCatching { opener.launch(arrayOf("application/zip", "application/octet-stream")) }
+        runCatching { opener.launch(types) }
             .onFailure { Actions.toast("No hay ningún gestor de archivos disponible") }
     }
 

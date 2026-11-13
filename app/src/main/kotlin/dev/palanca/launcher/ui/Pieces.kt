@@ -62,7 +62,8 @@ import kotlin.math.sin
 // ---- Icono de app -----------------------------------------------------------------------
 
 /** Forma efectiva del icono de [app]: la suya propia o la global. */
-fun iconShape(cfg: Config, app: AppEntry): String = cfg.icons[app.key]?.shape ?: cfg.look.iconShape
+fun iconShape(cfg: Config, app: AppEntry): String =
+    if (cfg.look.iconTint == "burbuja") "circulo" else cfg.icons[app.key]?.shape ?: cfg.look.iconShape
 
 fun iconScale(cfg: Config, app: AppEntry): Float =
     (cfg.look.iconScale * (cfg.icons[app.key]?.scale ?: 1f)).coerceIn(0.6f, 1.4f)

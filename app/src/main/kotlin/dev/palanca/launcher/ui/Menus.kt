@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.TransformOrigin
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.Cat
@@ -45,8 +47,9 @@ class MenuItem(val label: String, val value: String = "", val keep: Boolean = fa
 /** Ventana flotante con una lista de acciones. Se usa para los menús de app, widget y categoría. */
 class MenuScreen(
     private val index: String, private val title: String, private val items: () -> List<MenuItem>,
-) : Screen {
+) : Screen, Closable {
     override val overlay get() = true
+    override var closing by mutableStateOf(false)
     private var sel by mutableIntStateOf(0)
 
     override fun onPad(e: PadEvent): Boolean {
@@ -71,7 +74,7 @@ class MenuScreen(
     override fun Content() {
         LocalCfg.current // se relee al cambiar la configuración
         val list = items()
-        Scrim({ Env.nav.pop() }) {
+        Popup(TransformOrigin(0.5f, 0.55f), closing, { Env.nav.pop() }) {
             Window(Modifier.align(Alignment.Center).width(540.dp).heightIn(max = 610.dp)) {
                 T(index, 14, LocalAccent.current, FontWeight.Bold, mono = true)
                 Spacer(Modifier.height(6.dp))

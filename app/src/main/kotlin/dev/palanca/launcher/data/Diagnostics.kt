@@ -21,7 +21,7 @@ import java.io.File
 /**
  * Informe de texto con lo que este dispositivo deja leer: sensores de temperatura, ventilador,
  * ajustes propios del fabricante (modos de rendimiento), mandos y versión de Android.
- * Sirve para saber qué se puede integrar en Palanca en esta consola concreta.
+ * Sirve para saber qué se puede integrar en Heaven en esta consola concreta.
  * No incluye datos personales: ni cuentas, ni archivos, ni lista completa de apps.
  */
 object Diagnostics {
@@ -29,7 +29,7 @@ object Diagnostics {
     private val VENDOR_PACKAGES = Regex("retroid|odin|ayn|moorechip|gamekey|gameassist|keymap|joystick|handheld|fan|performance|thermal|gamespace|gamemode", RegexOption.IGNORE_CASE)
 
     fun export() {
-        Env.host?.createDocument("palanca-diagnostico.txt", "text/plain") { uri ->
+        Env.host?.createDocument("heaven-diagnostico.txt", "text/plain") { uri ->
             uri ?: return@createDocument
             Env.scope.launch {
                 val ok = withContext(Dispatchers.IO) {
@@ -47,7 +47,7 @@ object Diagnostics {
             append("\n== ").append(title).append(" ==\n")
             runCatching { body() }.onFailure { append("(error: ").append(it.javaClass.simpleName).append(")\n") }
         }
-        append("Diagnóstico de Palanca\n")
+        append("Diagnóstico de Heaven\n")
 
         section("Dispositivo") {
             append("${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE} / ${Build.PRODUCT})\n")

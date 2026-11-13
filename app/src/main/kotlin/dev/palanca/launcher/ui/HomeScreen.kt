@@ -43,6 +43,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.layout
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.Cat
@@ -234,7 +241,7 @@ class HomeScreen : Screen {
                     listOf("Inicio", "Widgets").forEachIndexed { i, name ->
                         val on = i == page
                         Box(
-                            Modifier.height(36.dp).background(if (on) P.Panel else Color.Transparent, CircleShape)
+                            Modifier.height(40.dp).then(if (on) Modifier.glassPanel(CircleShape) else Modifier)
                                 .tap { page = i; zone = 0 }.padding(horizontal = 18.dp),
                             contentAlignment = Alignment.Center,
                         ) { T(name, 15, if (on) P.Ink else P.Dim, if (on) FontWeight.Medium else FontWeight.Normal) }
@@ -249,8 +256,8 @@ class HomeScreen : Screen {
                         on("wifi_on") to on("bluetooth_on")
                     }
                     Row(Modifier.tap { Env.nav.push(QuickPanel()) }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatusPill("Wi‑Fi", wifi)
-                        StatusPill("Bluetooth", bluetooth)
+                        SymbolPill(wifi) { WifiGlyph(P.Ink) }
+                        SymbolPill(bluetooth) { BluetoothGlyph(P.Ink) }
                         if (battery.percent >= 0) StatusPill("${battery.percent} %" + if (battery.charging) " · cargando" else "", true)
                     }
                 }
@@ -266,7 +273,7 @@ class HomeScreen : Screen {
                                 T(dateText(now).replaceFirstChar { it.uppercase() }, 21, P.Dim)
                             }
                             Spacer(Modifier.height(26.dp))
-                            PlayButton(cfg, apps.firstOrNull { it.key == cfg.playApp }, zone == 2)
+                            PlayButton(apps.firstOrNull { it.key == cfg.playApp }, zone == 2)
                         }
                         Cards(cfg, apps, if (zone == 1) card else -1)
                     }
@@ -275,7 +282,7 @@ class HomeScreen : Screen {
                         when (zone) {
                             1 -> listOf("A" to "Abrir / cambiar", "B" to "Volver")
                             2 -> listOf("A" to "Jugar", "X" to "Elegir app", "B" to "Volver")
-                            else -> listOf("A" to "Abrir", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "Panel", "START" to "Personalizar")
+                            else -> listOf("A" to "Abrir", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "CNTRL", "START" to "Custom")
                         },
                     )
                 } else {
@@ -289,31 +296,84 @@ class HomeScreen : Screen {
     @Composable
     private fun StatusPill(text: String, on: Boolean) {
         Row(
-            Modifier.height(36.dp).background(P.Panel, CircleShape).padding(horizontal = 14.dp),
+            Modifier.height(40.dp).glassPanel(CircleShape).padding(horizontal = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Dot(if (on) LocalAccent.current else P.Line, 8.dp)
+            Dot(if (on) LocalAccent.current else P.Dim, 8.dp)
             Spacer(Modifier.width(9.dp))
             T(text, 14, if (on) P.Ink else P.Dim)
         }
     }
 
+    /** Burbuja de cristal con un símbolo y, al lado, un punto verde (activo) o gris (apagado). */
     @Composable
-    private fun PlayButton(cfg: Config, app: AppEntry?, selected: Boolean) {
+    private fun SymbolPill(on: Boolean, symbol: @Composable () -> Unit) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).glassPanel(CircleShape).alpha(if (on) 1f else 0.55f), contentAlignment = Alignment.Center) { symbol() }
+            Spacer(Modifier.width(5.dp))
+            Dot(if (on) Color(0xFF4ADE80) else Color(0xFF6B7078), 8.dp)
+            Spacer(Modifier.width(4.dp))
+        }
+    }
+
+    @Composable
+    private fun WifiGlyph(color: Color) = Canvas(Modifier.size(20.dp)) {
+        val w = 1.9.dp.toPx()
+        val c = Offset(size.width / 2, size.height * 0.84f)
+        for (k in 1..3) {
+            val r = size.width * 0.21f * k
+            drawArc(color, 225f, 90f, false, Offset(c.x - r, c.y - r), Size(r * 2, r * 2), style = Stroke(w, cap = StrokeCap.Round))
+        }
+        drawCircle(color, w * 0.8f, c)
+    }
+
+    @Composable
+    private fun BluetoothGlyph(color: Color) = Canvas(Modifier.size(20.dp)) {
+        val w = 1.9.dp.toPx()
+        fun p(x: Float, y: Float) = Offset(size.width * x, size.height * y)
+        val points = listOf(p(0.26f, 0.30f), p(0.70f, 0.70f), p(0.48f, 0.95f), p(0.48f, 0.05f), p(0.70f, 0.30f), p(0.26f, 0.70f))
+        for (i in 0 until points.lastIndex) drawLine(color, points[i], points[i + 1], w, StrokeCap.Round)
+    }
+
+    /** Dibujo de línea de la consola: cuerpo, pantalla, sticks, cruceta y botones. */
+    @Composable
+    private fun ConsoleGlyph(color: Color, modifier: Modifier) = Canvas(modifier) {
+        val w = 2.2.dp.toPx()
+        val h = size.height; val full = size.width
+        val line = Stroke(w, cap = StrokeCap.Round)
+        drawRoundRect(color, Offset(w / 2, w / 2), Size(full - w, h - w), CornerRadius(h * 0.36f), line)
+        val side = full * 0.21f
+        drawRoundRect(color, Offset(side, h * 0.16f), Size(full - 2 * side, h * 0.68f), CornerRadius(h * 0.07f), line)
+        // Izquierda: stick arriba y cruceta debajo.
+        val lx = side / 2
+        drawCircle(color, h * 0.13f, Offset(lx, h * 0.33f), style = line)
+        val d = h * 0.105f
+        drawLine(color, Offset(lx - d, h * 0.68f), Offset(lx + d, h * 0.68f), w, StrokeCap.Round)
+        drawLine(color, Offset(lx, h * 0.68f - d), Offset(lx, h * 0.68f + d), w, StrokeCap.Round)
+        // Derecha: cuatro botones arriba y stick debajo.
+        val rx = full - side / 2
+        val b = h * 0.085f
+        for ((dx, dy) in listOf(0f to -1f, 1f to 0f, 0f to 1f, -1f to 0f)) drawCircle(color, w * 0.72f, Offset(rx + dx * b, h * 0.33f + dy * b))
+        drawCircle(color, h * 0.13f, Offset(rx, h * 0.68f), style = line)
+    }
+
+    /** Botón de jugar: el dibujo de la consola y, si hay un frontend elegido, su icono al lado. */
+    @Composable
+    private fun PlayButton(app: AppEntry?, selected: Boolean) {
         val accent = LocalAccent.current
         Row(
-            Modifier.height(60.dp).brackets(selected, P.Ink, gap = 4.dp, radius = 30.dp).background(accent, CircleShape)
+            Modifier.height(88.dp).brackets(selected, P.Ink, gap = 4.dp, radius = 44.dp).background(accent, CircleShape)
                 .tap(onLong = { Env.nav.push(playAppPicker()) }) {
                     zone = 2
-                    app?.let(Actions::launch) ?: Env.nav.push(playAppPicker())
-                }.padding(start = 10.dp, end = 26.dp),
+                    app?.let { Actions.launch(it) } ?: Env.nav.push(playAppPicker())
+                }.padding(horizontal = 30.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (app != null) AppIcon(app, 40.dp) else Spacer(Modifier.width(14.dp))
-            Spacer(Modifier.width(12.dp))
-            T("Jugar", 19, P.OnAccent, FontWeight.Bold)
-            Spacer(Modifier.width(10.dp))
-            T(app?.labelIn(cfg) ?: "elige tu frontend", 15, P.OnAccent.copy(alpha = 0.78f))
+            ConsoleGlyph(Color.White, Modifier.size(126.dp, 56.dp))
+            if (app != null) {
+                Spacer(Modifier.width(20.dp))
+                AppIcon(app, 56.dp)
+            }
         }
     }
 
@@ -330,8 +390,8 @@ class HomeScreen : Screen {
                 val usage = stats.usage[last.key]!!
                 val game = last.categoryIn(cfg).let { it == Cat.JUEGOS || it == Cat.EMULADORES }
                 Panel(Modifier.fillMaxWidth().brackets(selected == 0, accent, radius = 22.4.dp).tap { Actions.launch(last) }) {
-                    Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(last, 56.dp)
+                    Row(Modifier.padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AppIcon(last, 50.dp)
                         Spacer(Modifier.width(16.dp))
                         Column {
                             Label(if (game) "Seguir jugando" else "Continuar")
@@ -358,7 +418,13 @@ class HomeScreen : Screen {
     private fun Carousel(pins: List<AppEntry>, size: Dp, selected: Int, active: Boolean) {
         val cfg = LocalCfg.current
         val slot = size + 34.dp
-        BoxWithConstraints(Modifier.fillMaxWidth().height(size * 1.3f + 62.dp)) {
+        // El carrusel ocupa todo el ancho de la pantalla (sale del margen lateral): los iconos no se cortan a los lados.
+        val bleed = Modifier.layout { measurable, constraints ->
+            val extra = 112.dp.roundToPx()
+            val placeable = measurable.measure(constraints.copy(minWidth = constraints.maxWidth + extra, maxWidth = constraints.maxWidth + extra))
+            layout(constraints.maxWidth, placeable.height) { placeable.place(-extra / 2, 0) }
+        }
+        BoxWithConstraints(bleed.height(size * 1.3f + 62.dp)) {
             val state = rememberLazyListState()
             LaunchedEffect(selected) { state.animateScrollToItem(selected) }
             LazyRow(

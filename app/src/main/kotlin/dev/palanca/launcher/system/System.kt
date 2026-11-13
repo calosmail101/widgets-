@@ -31,9 +31,9 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 enum class ActionId(val title: String) {
-    NONE("Nada"), ANDROID_SETTINGS("Ajustes de Android"), QUICK_PANEL("Panel rápido"),
+    NONE("Nada"), ANDROID_SETTINGS("Ajustes de Android"), QUICK_PANEL("CNTRL"),
     RECENTS("Apps recientes"), NOTIFICATIONS("Notificaciones"), SEARCH("Buscar"),
-    CUSTOMIZE("Personalizar"), DRAWER("Cajón de apps"), LAST_APP("Última app"),
+    CUSTOMIZE("Custom"), DRAWER("Cajón de apps"), LAST_APP("Última app"),
 }
 
 /** Atajos configurables. Solo se disparan si la pantalla activa no usa ese botón. */
@@ -74,7 +74,7 @@ object Actions {
 
     private fun global(action: Int) {
         val service = PointerService.instance
-        if (service == null) toast("Activa el servicio de Palanca en Personalizar › Mandos") else service.performGlobalAction(action)
+        if (service == null) toast("Activa el servicio de Heaven en Custom › Mandos") else service.performGlobalAction(action)
     }
 
     private fun notifications() {
@@ -82,7 +82,7 @@ object Actions {
         runCatching {
             val bar = ctx.getSystemService("statusbar")
             Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(bar)
-        }.onFailure { toast("Activa el servicio de Palanca en Personalizar › Mandos") }
+        }.onFailure { toast("Activa el servicio de Heaven en Custom › Mandos") }
     }
 
     // ---- Lanzar apps y medir sesiones --------------------------------------------------

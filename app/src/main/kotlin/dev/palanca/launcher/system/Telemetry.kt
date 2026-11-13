@@ -23,7 +23,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 enum class Metric(val title: String) {
-    BATTERY("Batería"), POWER("Consumo"), BAT_TEMP("T. batería"), CPU_TEMP("T. CPU"), GPU_TEMP("T. GPU"),
+    BATTERY("Batería"), POWER("Consumo"), BAT_TEMP("Temps"), CPU_TEMP("T. CPU"), GPU_TEMP("T. GPU"),
     CPU_FREQ("CPU"), RAM("Memoria"), STORAGE("Interno"), SD("Tarjeta SD"), PING("Ping"), WIFI("Wi‑Fi"), REFRESH("Pantalla");
 
     companion object {

@@ -58,6 +58,8 @@ data class Look(
     val design: Int = 1,
     /** Ventanas translúcidas con el fondo desenfocado. */
     val glass: Boolean = true,
+    /** Tamaño del texto en porcentaje. */
+    val textScale: Int = 112,
     /** Estilo de color de los iconos: normal, tintado (acento) o claro. */
     val iconTint: String = "normal",
 )

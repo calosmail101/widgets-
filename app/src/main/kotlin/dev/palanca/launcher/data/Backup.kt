@@ -22,7 +22,7 @@ object Backup {
     private val dir get() = Env.ctx.filesDir
 
     fun export(themeOnly: Boolean) {
-        val name = if (themeOnly) "tema-palanca.zip" else "copia-palanca.zip"
+        val name = if (themeOnly) "tema-heaven.zip" else "copia-heaven.zip"
         Env.host?.createDocument(name, "application/zip") { uri ->
             uri ?: return@createDocument
             Env.scope.launch {
@@ -54,11 +54,11 @@ object Backup {
     }
 
     fun import() {
-        Env.host?.openDocument { uri ->
+        Env.host?.openDocument(arrayOf("application/zip", "application/octet-stream")) { uri ->
             uri ?: return@openDocument
             Env.scope.launch {
                 val data = withContext(Dispatchers.IO) { runCatching { read(uri) }.getOrNull() }
-                if (data == null) { Actions.toast("Ese archivo no es un tema ni una copia de Palanca"); return@launch }
+                if (data == null) { Actions.toast("Ese archivo no es un tema ni una copia de Heaven"); return@launch }
                 Env.cfg.update { current ->
                     // Los widgets no viajan: sus identificadores solo valen en el dispositivo original.
                     data.config?.copy(widgets = current.widgets, pinnedInit = true) ?: current.copy(look = data.look)
@@ -83,6 +83,30 @@ object Backup {
             }
         }
         return data
+    }
+
+    /**
+     * Guarda un .apk de paquete de iconos (por ejemplo el que exporta Icon Pack Studio) dentro de la
+     * app y lo usa directamente, sin instalarlo.
+     */
+    fun addIconPack(uri: Uri) {
+        Env.scope.launch {
+            val name = withContext(Dispatchers.IO) {
+                runCatching {
+                    val packs = File(dir, "packs").apply { mkdirs() }
+                    val file = File(packs, "pack_${System.currentTimeMillis()}.apk")
+                    Env.ctx.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } }
+                    // Android no permite cargar código ni recursos desde archivos que la app pueda modificar.
+                    file.setReadOnly()
+                    val id = "file:${file.name}"
+                    if (Env.icons.packs.mapping(id).isEmpty() && Env.icons.packs.allDrawables(id).isEmpty()) { file.delete(); null } else id
+                }.getOrNull()
+            }
+            if (name == null) { Actions.toast("Ese archivo no es un paquete de iconos válido"); return@launch }
+            Env.icons.clear()
+            Env.cfg.update { it.look { copy(iconPack = name) } }
+            Actions.toast("Paquete añadido y aplicado")
+        }
     }
 
     fun pickWallpaper() {

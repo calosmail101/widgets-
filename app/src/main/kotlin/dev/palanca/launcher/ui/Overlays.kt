@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.alpha
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.TransformOrigin
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.fold
@@ -161,8 +162,9 @@ class KeyboardScreen private constructor(
  * rendimiento de la consola (modo, ventilador, límite de CPU o ClusterTune).
  * La ventana de rendimiento solo aparece en consolas que exponen esos ajustes.
  */
-class QuickPanel : Screen {
+class QuickPanel : Screen, Closable {
     override val overlay get() = true
+    override var closing by mutableStateOf(false)
     private var side by mutableIntStateOf(0)
     private var sel by mutableIntStateOf(0)
     private var brightness by mutableIntStateOf(Actions.brightness())
@@ -170,7 +172,6 @@ class QuickPanel : Screen {
     private var performance by mutableIntStateOf(DeviceModes.performance())
     private var fan by mutableIntStateOf(DeviceModes.fan())
     private var fanSpeed by mutableIntStateOf(DeviceModes.fanSpeed())
-    private var cpu by mutableIntStateOf(DeviceModes.cpuLimit())
     private val clusterTune = Env.apps.apps.value.firstOrNull { it.pkg == "com.aure.clustertune" }
     private val jobs = HashMap<String, Job>()
 
@@ -178,8 +179,9 @@ class QuickPanel : Screen {
     private fun console(): List<String> = buildList {
         if (performance >= 0) add("rendimiento")
         if (fan >= 0) add("ventilador")
-        if (fan == 6) add("velocidad")
-        if (clusterTune != null) add("clustertune") else if (DeviceModes.cpuLimitsSupported()) add("cpu")
+        // La velocidad está siempre en la lista (solo actúa en Personalizado): así la ventana no cambia de tamaño.
+        if (fan >= 0) add("velocidad")
+        if (clusterTune != null) add("clustertune")
     }
     private fun rows() = if (side == 0) system else console()
 
@@ -211,15 +213,14 @@ class QuickPanel : Screen {
             "volumen" -> { Actions.volumeStep(delta); volume = Actions.volume() }
             "rendimiento" -> change("perf", next(DeviceModes.PERFORMANCE, performance), { performance = it }, DeviceModes::setPerformance, DeviceModes::performance)
             "ventilador" -> change("fan", next(DeviceModes.FAN, fan), { fan = it }, DeviceModes::setFan, DeviceModes::fan)
-            "velocidad" -> change("speed", (fanSpeed + dir * 10).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
-            "cpu" -> change("cpu", (cpu.coerceAtLeast(0) + dir).coerceIn(0, DeviceModes.CPU_LIMITS.lastIndex), { cpu = it }, DeviceModes::setCpuLimit, DeviceModes::cpuLimit)
+            "velocidad" -> if (fan == 6) change("speed", (fanSpeed + dir * 10).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
         }
     }
 
     private fun activate(row: String) {
         when (row) {
             "brillo" -> if (!Actions.canWriteSettings()) Actions.askWriteSettings()
-            "rendimiento", "ventilador", "velocidad", "cpu" -> adjust(+5)
+            "rendimiento", "ventilador", "velocidad" -> adjust(+5)
             "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
             "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
             "notificaciones" -> { Env.nav.pop(); Actions.run(dev.palanca.launcher.system.ActionId.NOTIFICATIONS) }
@@ -228,7 +229,7 @@ class QuickPanel : Screen {
         }
     }
 
-    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad", "cpu")
+    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad")
     private fun switchSide(to: Int) { if (to == 0 || console().isNotEmpty()) { side = to; sel = 0 } }
 
     override fun onPad(e: PadEvent): Boolean {
@@ -256,11 +257,12 @@ class QuickPanel : Screen {
     override fun Content() {
         val canWrite = remember(sel) { Actions.canWriteSettings() }
         val console = console()
-        Scrim({ Env.nav.pop() }) {
+        // Nace de la esquina superior izquierda, del lado del botón SELECT.
+        Popup(TransformOrigin(0f, 0f), closing, { Env.nav.pop() }) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.Top) {
                     Window(Modifier.width(if (console.isEmpty()) 600.dp else 540.dp).alpha(if (side == 0) 1f else 0.6f)) {
-                        T("Panel rápido", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                        T("CNTRL", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
                         system.forEachIndexed { i, row ->
                             val on = side == 0 && i == sel
                             val tap = Modifier.tap { side = 0; sel = i; activate(row) }
@@ -276,23 +278,18 @@ class QuickPanel : Screen {
                         }
                     }
                     if (console.isNotEmpty()) Window(Modifier.width(540.dp).alpha(if (side == 1) 1f else 0.6f)) {
-                        T("Rendimiento", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                        T("BOOST", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
                         console.forEachIndexed { i, row ->
                             val on = side == 1 && i == sel
                             val tap = Modifier.tap { side = 1; sel = i; activate(row) }
                             when (row) {
                                 "rendimiento" -> ListRow("Modo", DeviceModes.name(DeviceModes.PERFORMANCE, performance), on, tap, arrows = true)
                                 "ventilador" -> ListRow("Ventilador", DeviceModes.name(DeviceModes.FAN, fan), on, tap, arrows = true)
-                                "velocidad" -> Slider("Velocidad del ventilador", fanSpeed, on, tap)
-                                "cpu" -> ListRow("Límite de CPU", DeviceModes.CPU_LIMITS.getOrNull(cpu)?.first ?: "otro", on, tap, arrows = true)
+                                "velocidad" -> Box(Modifier.alpha(if (fan == 6) 1f else 0.4f)) { Slider(if (fan == 6) "Velocidad del ventilador" else "Velocidad (solo en Personalizado)", fanSpeed, on, tap) }
                                 else -> ListRow("ClusterTune · límites de CPU y GPU", "abrir", on, tap)
                             }
                             Spacer(Modifier.height(4.dp))
                         }
-                        if ("cpu" in console) T(
-                            "Bajar el límite reduce calor y consumo. Vuelve a «Sin límite» si un juego va justo.",
-                            13, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp, top = 8.dp, end = 8.dp),
-                        )
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -322,8 +319,9 @@ class QuickPanel : Screen {
 }
 
 /** Ventana que espera a que se pulse un botón cualquiera y devuelve su código de tecla. */
-class KeyCaptureScreen(private val title: String, private val onKey: (Int) -> Unit) : Screen {
+class KeyCaptureScreen(private val title: String, private val onKey: (Int) -> Unit) : Screen, Closable {
     override val overlay get() = true
+    override var closing by mutableStateOf(false)
 
     init {
         Env.keyCapture = { code -> Env.keyCapture = null; Env.nav.stack.remove(this); onKey(code) }
@@ -333,7 +331,7 @@ class KeyCaptureScreen(private val title: String, private val onKey: (Int) -> Un
 
     @Composable
     override fun Content() {
-        Scrim({ Env.keyCapture = null; Env.nav.stack.remove(this@KeyCaptureScreen) }) {
+        Popup(TransformOrigin(0.5f, 0.5f), closing, { Env.keyCapture = null; Env.nav.stack.remove(this@KeyCaptureScreen) }) {
             Window(Modifier.align(Alignment.Center).width(620.dp)) {
                 T(title, 24, weight = FontWeight.Medium, modifier = Modifier.padding(8.dp))
                 T(
