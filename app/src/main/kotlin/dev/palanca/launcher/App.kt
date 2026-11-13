@@ -7,6 +7,7 @@ import android.net.Uri
 import dev.palanca.launcher.data.AppRepository
 import dev.palanca.launcher.data.Config
 import dev.palanca.launcher.data.JsonStore
+import dev.palanca.launcher.data.migrate
 import dev.palanca.launcher.data.Stats
 import dev.palanca.launcher.icons.IconPacks
 import dev.palanca.launcher.icons.IconRenderer
@@ -25,6 +26,7 @@ interface HostBridge {
     fun createDocument(name: String, mime: String, onResult: (Uri?) -> Unit)
     fun openDocument(onResult: (Uri?) -> Unit)
     fun addWidget(provider: android.appwidget.AppWidgetProviderInfo)
+    fun pickAudio(onResult: (List<Uri>) -> Unit)
 }
 
 /** Dependencias de la app. Un único sitio, sin inyección: es un launcher pequeño. */
@@ -50,6 +52,7 @@ object Env {
     fun init(context: Context, dir: File = context.filesDir) {
         ctx = context.applicationContext
         cfg = JsonStore(File(dir, "config.json"), Config.serializer(), ::Config, scope)
+        cfg.update(::migrate)
         stats = JsonStore(File(dir, "stats.json"), Stats.serializer(), ::Stats, scope)
         apps = AppRepository(ctx, scope)
         icons = IconRenderer(ctx, IconPacks(ctx))

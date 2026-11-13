@@ -64,7 +64,7 @@ class ScreenshotTest {
         app("Gmail", "com.google.android.gm", Cat.APPS), app("Maps", "com.google.android.apps.maps", Cat.APPS),
         app("Discord", "com.discord", Cat.APPS), app("Twitch", "tv.twitch.android.app", Cat.MULTIMEDIA),
         app("melonDS", "me.magnum.melonds", Cat.EMULADORES), app("Azahar", "org.azahar_emu.azahar", Cat.EMULADORES),
-        app("Reloj", "com.android.deskclock", Cat.SISTEMA), app("Telegram", "org.telegram.messenger", Cat.APPS),
+        app("Reloj", "com.android.deskclock", Cat.SISTEMA), app("Cocoon", "rip.moth.cocoonshell", Cat.EMULADORES), app("Telegram", "org.telegram.messenger", Cat.APPS),
     ).sortedBy { it.sortKey }
 
     @Before fun setUp() {
@@ -84,7 +84,7 @@ class ScreenshotTest {
         )
         Env.apps.apps.value = apps
         val dolphin = apps.first { it.label == "Dolphin" }
-        Env.cfg.update { it.copy(pinnedInit = true, pinned = listOf("YouTube", "Play Store", "Chrome", "RetroArch", "Dolphin", "Spotify", "Ajustes").map { n -> apps.first { a -> a.label == n }.key }) }
+        Env.cfg.update { it.copy(playApp = apps.first { a -> a.label == "Cocoon" }.key, pinnedInit = true, pinned = listOf("YouTube", "Play Store", "Chrome", "RetroArch", "Dolphin", "Spotify", "Ajustes").map { n -> apps.first { a -> a.label == n }.key }) }
         Env.stats.update { it.copy(usage = mapOf(dolphin.key to Usage(System.currentTimeMillis() - 2 * 3_600_000L, 5, 9_000_000, 74 * 60_000L))) }
     }
 
@@ -133,11 +133,11 @@ class ScreenshotTest {
 
     @Test fun statsGrandes() {
         stats("anillo", Metric.BATTERY, Metric.CPU_TEMP, Metric.STORAGE, Metric.SD)
-        shot("9a-stats-grandes-anillo", pad = listOf(Btn.UP, Btn.DOWN, Btn.RIGHT))
+        shot("9a-stats-grandes-anillo", pad = listOf(Btn.UP, Btn.RIGHT, Btn.DOWN, Btn.RIGHT))
     }
     @Test fun statsMedianas() {
         stats("grafica", Metric.BATTERY, Metric.POWER, Metric.CPU_TEMP, Metric.GPU_TEMP, Metric.RAM, Metric.PING, Metric.STORAGE, Metric.SD, Metric.REFRESH)
-        shot("9b-stats-medianas-grafica", pad = listOf(Btn.UP, Btn.DOWN, Btn.DOWN))
+        shot("9b-stats-medianas-grafica", pad = listOf(Btn.UP, Btn.RIGHT, Btn.DOWN, Btn.DOWN))
     }
     @Test fun statsMini() {
         stats("segmentos", *Metric.entries.toTypedArray())
@@ -145,7 +145,7 @@ class ScreenshotTest {
     }
     @Test fun statsMenu() {
         stats("segmentos", Metric.BATTERY, Metric.STORAGE, Metric.SD, Metric.PING)
-        shot("9d-stats-menu", pad = listOf(Btn.UP, Btn.DOWN, Btn.A))
+        shot("9d-stats-menu", pad = listOf(Btn.UP, Btn.RIGHT, Btn.DOWN, Btn.A))
     }
     @Test fun cajon() = shot("2-cajon", DrawerScreen(), pad = listOf(Btn.RIGHT, Btn.RIGHT, Btn.DOWN))
     @Test fun menuApp() = shot("3-menu-app", DrawerScreen(), appMenu(apps[3]), pad = listOf(Btn.DOWN, Btn.DOWN))

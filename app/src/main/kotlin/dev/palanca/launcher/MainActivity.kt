@@ -49,6 +49,12 @@ class MainActivity : ComponentActivity(), HostBridge {
     private val zipCreator = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { onCreated?.invoke(it); onCreated = null }
     private val textCreator = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { onCreated?.invoke(it); onCreated = null }
     private val opener = registerForActivityResult(ActivityResultContracts.OpenDocument()) { onOpened?.invoke(it); onOpened = null }
+    private var onAudio: ((List<Uri>) -> Unit)? = null
+    private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        // Permiso persistente: las canciones siguen accesibles tras reiniciar la consola.
+        uris.forEach { runCatching { contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
+        onAudio?.invoke(uris); onAudio = null
+    }
     private var pendingWidget: Pair<Int, AppWidgetProviderInfo>? = null
 
     override val activity: Activity get() = this
@@ -189,6 +195,11 @@ class MainActivity : ComponentActivity(), HostBridge {
         onOpened = onResult
         runCatching { opener.launch(arrayOf("application/zip", "application/octet-stream")) }
             .onFailure { Actions.toast("No hay ningún gestor de archivos disponible") }
+    }
+
+    override fun pickAudio(onResult: (List<Uri>) -> Unit) {
+        onAudio = onResult
+        runCatching { audioPicker.launch(arrayOf("audio/*")) }.onFailure { Actions.toast("No hay ningún gestor de archivos disponible") }
     }
 
     // ---- Widgets: enlazar → configurar → guardar -------------------------------------------

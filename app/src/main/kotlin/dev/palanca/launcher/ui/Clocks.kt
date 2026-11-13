@@ -27,6 +27,7 @@ import kotlin.math.sin
 
 /** Estilos de reloj adicionales. Todos se dibujan con formas simples o texto: coste mínimo. */
 val EXTRA_CLOCK_STYLES = listOf(
+    "duo" to "Dúo",
     "bloques" to "Bloques", "contorno" to "Contorno", "apilado" to "Apilado", "palabras" to "En palabras",
     "binario" to "Binario", "analogico" to "Analógico", "terminal" to "Terminal",
 )
@@ -63,6 +64,14 @@ fun ExtraClock(look: Look, height: Dp, time: LocalDateTime, modifier: Modifier):
     val text = timeText(look, time)
     val h = height.value
     when (look.clockStyle) {
+        // Horas en negrita y minutos finos en el color de acento, sin dos puntos.
+        "duo" -> Row(modifier, verticalAlignment = Alignment.Bottom) {
+            val parts = text.split(':')
+            T(parts[0], h.toInt(), weight = FontWeight.Bold, spacing = -h * 0.03f)
+            Box(Modifier.width(height * 0.07f))
+            T(parts[1], h.toInt(), accent, FontWeight.Light, spacing = -h * 0.03f)
+            if (parts.size > 2) T(parts[2], (h * 0.3f).toInt(), P.Dim, modifier = Modifier.padding(start = height * 0.08f, bottom = height * 0.16f))
+        }
         "bloques" -> {
             val cell = height / 5
             val cols = text.sumOf { BLOCK_FONT[it]!![0].length + 1 } - 1

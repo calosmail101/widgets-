@@ -157,24 +157,32 @@ object Actions {
     fun pointerEnabled() = PointerService.instance != null
 }
 
-/** Sonidos sintetizados (sin archivos) y vibración corta. */
+val SOUND_PACKS = listOf("suave" to "Suave (campanas)", "arcade" to "Arcade (8 bits)", "mecanico" to "Mecánico (clics)")
+
+/**
+ * Sonidos de la interfaz, sintetizados al vuelo (sin archivos) en tres paquetes, y vibración corta.
+ * Cada movimiento alterna entre varias notas para que no suene repetitivo.
+ */
 class Feedback(private val ctx: Context) {
     private val vibrator = ctx.getSystemService(Vibrator::class.java)
-    private var tracks: Map<String, AudioTrack>? = null
+    private var tracks: Map<String, List<AudioTrack>> = emptyMap()
+    private var builtPack: String? = null
+    private var turn = 0
 
     // Los sonidos se lanzan desde su propio hilo: el de la interfaz no espera nunca al audio.
     private val audioThread = HandlerThread("palanca-fx").apply { start() }
     private val audio = Handler(audioThread.looper)
 
-    private fun tone(freq: Double, toFreq: Double, ms: Int, gain: Double): AudioTrack? = runCatching {
+    /** Genera [ms] milisegundos de sonido a partir de una función del tiempo en segundos (salida -1..1). */
+    private fun clip(ms: Int, wave: (Double) -> Double): AudioTrack? = runCatching {
         val rate = 44100
         val n = rate * ms / 1000
         val pcm = ShortArray(n)
-        var phase = 0.0
         for (i in 0 until n) {
-            val t = i.toDouble() / n
-            phase += 2 * PI * (freq + (toFreq - freq) * t) / rate
-            pcm[i] = (sin(phase) * exp(-4.0 * t) * gain * Short.MAX_VALUE).toInt().toShort()
+            val t = i.toDouble() / rate
+            // Entrada de 2 ms y salida de 4 ms para que no haga "clic" al empezar ni al cortar.
+            val edge = minOf(1.0, t / 0.002, (ms / 1000.0 - t) / 0.004)
+            pcm[i] = (wave(t).coerceIn(-1.0, 1.0) * edge * Short.MAX_VALUE).toInt().toShort()
         }
         AudioTrack.Builder()
             .setAudioAttributes(
@@ -190,19 +198,55 @@ class Feedback(private val ctx: Context) {
             .build().apply { write(pcm, 0, n) }
     }.getOrNull()
 
+    private fun sine(f: Double, t: Double) = sin(2 * PI * f * t)
+    private fun square(f: Double, t: Double) = if (sine(f, t) >= 0) 1.0 else -1.0
+    /** Campana: fundamental más dos armónicos que se apagan a distinto ritmo. */
+    private fun bell(f: Double, t: Double, decay: Double) =
+        sine(f, t) * exp(-decay * t) + 0.35 * sine(f * 2, t) * exp(-decay * 1.8 * t) + 0.12 * sine(f * 3.01, t) * exp(-decay * 3 * t)
+    /** Dos notas seguidas: la segunda entra en [at] segundos. */
+    private fun twoNotes(t: Double, at: Double, first: (Double) -> Double, second: (Double) -> Double) =
+        if (t < at) first(t) else first(t) * 0.4 + second(t - at)
+
+    private fun build(pack: String): Map<String, List<AudioTrack>> {
+        val noise = java.util.Random(7)
+        fun set(vararg clips: AudioTrack?) = clips.filterNotNull()
+        return when (pack) {
+            "arcade" -> mapOf(
+                "move" to listOf(988.0, 1109.0, 880.0).map { f -> clip(34) { t -> 0.10 * square(f, t) * exp(-30 * t) } }.let { set(*it.toTypedArray()) },
+                "select" to set(clip(150) { t -> 0.11 * twoNotes(t, 0.055, { square(988.0, it) * exp(-18 * it) }, { square(1480.0, it) * exp(-14 * it) }) }),
+                "back" to set(clip(140) { t -> 0.11 * twoNotes(t, 0.055, { square(740.0, it) * exp(-18 * it) }, { square(494.0, it) * exp(-14 * it) }) }),
+            )
+            "mecanico" -> mapOf(
+                "move" to listOf(170.0, 190.0, 155.0).map { f ->
+                    clip(46) { t -> 0.30 * sine(f, t) * exp(-70 * t) + (if (t < 0.006) 0.22 * (noise.nextDouble() * 2 - 1) else 0.0) }
+                }.let { set(*it.toTypedArray()) },
+                "select" to set(clip(90) { t -> 0.36 * sine(230.0, t) * exp(-45 * t) + (if (t < 0.010) 0.26 * (noise.nextDouble() * 2 - 1) else 0.0) }),
+                "back" to set(clip(90) { t -> 0.36 * sine(130.0, t) * exp(-45 * t) + (if (t < 0.008) 0.2 * (noise.nextDouble() * 2 - 1) else 0.0) }),
+            )
+            else -> mapOf(
+                // Tres notas de un mismo acorde: moverse suena como pasar el dedo por unas campanillas.
+                "move" to listOf(1318.5, 1568.0, 1174.7).map { f -> clip(90) { t -> 0.17 * bell(f, t, 42.0) } }.let { set(*it.toTypedArray()) },
+                "select" to set(clip(260) { t -> 0.20 * twoNotes(t, 0.07, { bell(1046.5, it, 22.0) }, { bell(1568.0, it, 14.0) }) }),
+                "back" to set(clip(220) { t -> 0.18 * twoNotes(t, 0.07, { bell(784.0, it, 22.0) }, { bell(523.3, it, 16.0) }) }),
+            )
+        }
+    }
+
     private fun play(name: String) {
         if (!Env.cfg.value.sound) return
         audio.post { playNow(name) }
     }
 
     private fun playNow(name: String) {
-        val all = tracks ?: buildMap {
-            tone(1500.0, 1300.0, 22, 0.16)?.let { put("move", it) }
-            tone(880.0, 1320.0, 70, 0.22)?.let { put("select", it) }
-            tone(660.0, 440.0, 60, 0.20)?.let { put("back", it) }
-        }.also { tracks = it }
+        val pack = Env.cfg.value.soundPack
+        if (pack != builtPack) {
+            tracks.values.flatten().forEach { runCatching { it.release() } }
+            tracks = build(pack); builtPack = pack
+        }
+        val options = tracks[name].orEmpty()
+        if (options.isEmpty()) return
         runCatching {
-            all[name]?.run {
+            options[turn++ % options.size].run {
                 if (playState == AudioTrack.PLAYSTATE_PLAYING) stop()
                 reloadStaticData()
                 play()

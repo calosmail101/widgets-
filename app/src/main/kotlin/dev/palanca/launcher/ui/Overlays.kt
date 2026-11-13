@@ -26,6 +26,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.LaunchedEffect
+import dev.palanca.launcher.system.DeviceModes
+import dev.palanca.launcher.system.Privileged
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.fold
@@ -141,41 +152,75 @@ class KeyboardScreen private constructor(
     }
 }
 
-/** Panel rápido: brillo, volumen y accesos del sistema sin bajar la barra de Android. */
+/**
+ * Panel rápido: brillo, volumen, modos de la consola y accesos del sistema en una ventana.
+ * Los modos de rendimiento y ventilador solo aparecen en consolas que los tienen.
+ */
 class QuickPanel : Screen {
     override val overlay get() = true
     private var sel by mutableIntStateOf(0)
     private var brightness by mutableIntStateOf(Actions.brightness())
     private var volume by mutableIntStateOf(Actions.volume())
-    private val rows = 6
+    private var performance by mutableIntStateOf(DeviceModes.performance())
+    private var fan by mutableIntStateOf(DeviceModes.fan())
+    private val clusterTune = Env.apps.apps.value.firstOrNull { it.pkg == "com.aure.clustertune" }
 
-    private fun adjust(delta: Int) {
-        when (sel) {
-            0 -> if (Actions.canWriteSettings()) { brightness = (brightness + delta).coerceIn(1, 100); Actions.setBrightness(brightness) }
-            1 -> { Actions.volumeStep(delta); volume = Actions.volume() }
+    private fun rows(): List<String> = buildList {
+        add("brillo"); add("volumen")
+        if (performance >= 0) add("rendimiento")
+        if (fan >= 0) add("ventilador")
+        add("wifi"); add("bluetooth"); add("notificaciones")
+        if (clusterTune != null) add("clustertune")
+        add("ajustes")
+    }
+
+    /** Aplica un modo y comprueba medio segundo después que la consola lo aceptó. */
+    private fun setMode(apply: () -> Boolean, read: () -> Int, wanted: Int, store: (Int) -> Unit) {
+        if (!Privileged.available()) { Actions.toast("Esta consola no expone el servicio para cambiar modos"); return }
+        store(wanted)
+        apply()
+        Env.scope.launch {
+            delay(500)
+            val now = read()
+            store(now)
+            if (now != wanted) Actions.toast("La consola no aceptó el cambio")
         }
     }
 
-    private fun activate(i: Int) {
-        when (i) {
-            0 -> if (!Actions.canWriteSettings()) Actions.askWriteSettings()
-            2 -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
-            3 -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
-            4 -> { Env.nav.pop(); Actions.run(dev.palanca.launcher.system.ActionId.NOTIFICATIONS) }
-            5 -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
+    private fun adjust(delta: Int) {
+        val dir = if (delta > 0) 1 else -1
+        when (rows().getOrNull(sel)) {
+            "brillo" -> if (Actions.canWriteSettings()) { brightness = (brightness + delta).coerceIn(1, 100); Actions.setBrightness(brightness) }
+            "volumen" -> { Actions.volumeStep(delta); volume = Actions.volume() }
+            "rendimiento" -> setMode({ DeviceModes.setPerformance((performance)) }, DeviceModes::performance, (performance + dir).coerceIn(0, 2)) { performance = it }
+            "ventilador" -> setMode({ DeviceModes.setFan(fan) }, DeviceModes::fan, (fan + dir).coerceIn(0, 6)) { fan = it }
+        }
+    }
+
+    private fun activate(row: String) {
+        when (row) {
+            "brillo" -> if (!Actions.canWriteSettings()) Actions.askWriteSettings()
+            "rendimiento", "ventilador" -> adjust(+5)
+            "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
+            "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
+            "notificaciones" -> { Env.nav.pop(); Actions.run(dev.palanca.launcher.system.ActionId.NOTIFICATIONS) }
+            "clustertune" -> { Env.nav.pop(); clusterTune?.let(Actions::launch) }
+            "ajustes" -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
         }
     }
 
     override fun onPad(e: PadEvent): Boolean {
         if (e.long) return true
+        val rows = rows()
+        sel = sel.coerceIn(0, rows.lastIndex)
         when (e.btn) {
-            Btn.UP -> sel = (sel + rows - 1) % rows
-            Btn.DOWN -> sel = (sel + 1) % rows
+            Btn.UP -> sel = (sel + rows.size - 1) % rows.size
+            Btn.DOWN -> sel = (sel + 1) % rows.size
             Btn.LEFT -> adjust(-5)
             Btn.RIGHT -> adjust(+5)
             Btn.RS_LEFT -> adjust(-15)
             Btn.RS_RIGHT -> adjust(+15)
-            Btn.A -> activate(sel)
+            Btn.A -> activate(rows[sel])
             Btn.B, Btn.SELECT, Btn.L2 -> Env.nav.pop()
             else -> Unit
         }
@@ -186,22 +231,35 @@ class QuickPanel : Screen {
     override fun Content() {
         val accent = LocalAccent.current
         val canWrite = remember(sel) { Actions.canWriteSettings() }
+        val rows = rows()
+        val current = sel.coerceIn(0, rows.lastIndex)
+        val state = rememberLazyListState()
+        LaunchedEffect(current) { state.animateScrollToItem((current - 3).coerceAtLeast(0)) }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).tap { Env.nav.pop() }) {
             Column(
-                Modifier.align(Alignment.CenterEnd).width(460.dp).fillMaxHeight().background(P.Bg)
-                    .tap { }.padding(start = 28.dp, end = 28.dp, top = 30.dp, bottom = 24.dp),
+                Modifier.align(Alignment.Center).width(600.dp).heightIn(max = 630.dp).enter(18.dp, 0.94f, 200)
+                    .background(WINDOW, RoundedCornerShape(34.dp))
+                    .tap { }.padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 20.dp),
             ) {
-                T("PANEL", 14, accent, FontWeight.Bold, mono = true)
-                Spacer(Modifier.height(6.dp))
-                T("Ajustes rápidos", 26, weight = FontWeight.Medium)
-                Box(Modifier.padding(top = 16.dp, bottom = 14.dp).fillMaxWidth().height(1.dp).background(P.Line))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Slider("Brillo", if (canWrite) brightness else -1, sel == 0, Modifier.tap { sel = 0; activate(0) })
-                    Slider("Volumen", volume, sel == 1, Modifier.tap { sel = 1 })
-                    listOf("Wi‑Fi e internet", "Bluetooth", "Notificaciones", "Ajustes de Android").forEachIndexed { i, name ->
-                        ListRow(name, "abrir", sel == i + 2, Modifier.tap { sel = i + 2; activate(i + 2) })
+                T("Panel rápido", 26, weight = FontWeight.Medium, modifier = Modifier.padding(start = 6.dp, bottom = 12.dp))
+                LazyColumn(Modifier.weight(1f, fill = false), state = state, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    itemsIndexed(rows) { i, row ->
+                        val on = i == current
+                        val tap = Modifier.tap { sel = i; activate(row) }
+                        when (row) {
+                            "brillo" -> Slider("Brillo", if (canWrite) brightness else -1, on, tap)
+                            "volumen" -> Slider("Volumen", volume, on, tap)
+                            "rendimiento" -> ListRow("Rendimiento", DeviceModes.PERFORMANCE.firstOrNull { it.first == performance }?.second ?: "modo $performance", on, tap, arrows = true)
+                            "ventilador" -> ListRow("Ventilador", DeviceModes.fanName(fan), on, tap, arrows = true)
+                            "wifi" -> ListRow("Wi‑Fi e internet", "abrir", on, tap)
+                            "bluetooth" -> ListRow("Bluetooth", "abrir", on, tap)
+                            "notificaciones" -> ListRow("Notificaciones", "abrir", on, tap)
+                            "clustertune" -> ListRow("ClusterTune · límites de CPU y GPU", "abrir", on, tap)
+                            else -> ListRow("Ajustes de Android", "abrir", on, tap)
+                        }
                     }
                 }
+                Spacer(Modifier.height(10.dp))
                 HintBar(listOf("A" to "Abrir", "◀ ▶" to "Ajustar", "B" to "Cerrar"))
             }
         }
@@ -211,7 +269,7 @@ class QuickPanel : Screen {
     private fun Slider(title: String, value: Int, selected: Boolean, modifier: Modifier) {
         val accent = LocalAccent.current
         Column(
-            modifier.fillMaxWidth().background(if (selected) P.Panel else Color.Transparent, chamfer(12.dp))
+            modifier.fillMaxWidth().background(if (selected) P.Line else Color.Transparent, chamfer(12.dp))
                 .brackets(selected, accent, gap = 2.dp, len = 10.dp, stroke = 2.5.dp).padding(horizontal = 18.dp, vertical = 14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {

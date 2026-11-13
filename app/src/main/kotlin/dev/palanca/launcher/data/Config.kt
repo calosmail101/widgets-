@@ -54,6 +54,8 @@ data class Look(
     val stats: List<String> = listOf("BATTERY", "STORAGE"),
     val statSize: String = "auto",
     val statStyle: String = "segmentos",
+    /** Versión del diseño ya aplicada a esta configuración (ver [migrate]). */
+    val design: Int = 1,
 )
 
 @Serializable
@@ -68,6 +70,13 @@ data class Config(
     val swapAB: Boolean = false,
     val shortcuts: Map<String, String> = emptyMap(),
     val sound: Boolean = true,
+    val soundPack: String = "suave",
+    /** Canciones de fondo elegidas por el usuario (URIs con permiso persistente). */
+    val music: List<String> = emptyList(),
+    val musicOn: Boolean = true,
+    val musicVolume: Int = 15,
+    /** App que abre el botón Jugar de Inicio (clave paquete/actividad). */
+    val playApp: String? = null,
     val haptics: Boolean = true,
 ) {
     fun look(f: Look.() -> Look) = copy(look = look.f())
@@ -75,6 +84,25 @@ data class Config(
         val next = (icons[key] ?: IconOverride()).f()
         return copy(icons = if (next == IconOverride()) icons - key else icons + (key to next))
     }
+}
+
+/**
+ * Lleva una configuración antigua al diseño actual. Solo toca los valores que seguían
+ * en su valor de fábrica: lo que el usuario eligió a mano se respeta.
+ */
+fun migrate(c: Config): Config {
+    if (c.look.design >= 2) return c
+    val l = c.look
+    return c.copy(
+        look = l.copy(
+            design = 2,
+            font = if (l.font == "grotesk") "halo" else l.font,
+            accent = if (l.accent == 0xFFFF6A2B) 0xFF7C8CFF else l.accent,
+            clockStyle = if (l.clockStyle == "matriz") "duo" else l.clockStyle,
+            wallpaper = if (l.wallpaper == "trama") "aurora" else l.wallpaper,
+            dockSize = if (l.dockSize == 84) 92 else l.dockSize,
+        )
+    )
 }
 
 @Serializable

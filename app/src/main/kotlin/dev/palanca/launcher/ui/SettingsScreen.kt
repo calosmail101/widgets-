@@ -38,6 +38,7 @@ import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.ActionId
 import dev.palanca.launcher.system.Actions
+import dev.palanca.launcher.system.SOUND_PACKS
 import dev.palanca.launcher.system.Trigger
 
 sealed class SRow(val title: String)
@@ -117,6 +118,20 @@ private fun sections(): List<Section> = listOf(
         ),
     ),
     Section(
+        "Sonido", "La música suena solo en Inicio y en el cajón; al abrir cualquier otra cosa se apaga",
+        listOf(
+            Toggle("Sonidos al navegar", { it.sound }) { c, v -> c.copy(sound = v) },
+            Choice("Paquete de sonidos", { SOUND_PACKS }, { it.soundPack }) { c, v -> c.copy(soundPack = v) },
+            Toggle("Vibración", { it.haptics }) { c, v -> c.copy(haptics = v) },
+            Toggle("Música de fondo", { it.musicOn }) { c, v -> c.copy(musicOn = v) },
+            Act("Añadir canciones", { "${Env.cfg.value.music.size} en la lista" }) {
+                Env.host?.pickAudio { uris -> Env.cfg.update { c -> c.copy(music = (c.music + uris.map { it.toString() }).distinct()) } }
+            },
+            Range("Volumen de la música", 5, 60, 5, "%", { it.musicVolume }) { c, v -> c.copy(musicVolume = v) },
+            Act("Quitar todas las canciones") { Env.cfg.update { it.copy(music = emptyList()) } },
+        ),
+    ),
+    Section(
         "Mandos", "Los atajos funcionan en Inicio y en el cajón",
         listOf<SRow>(Toggle("Diseño Nintendo (intercambia A/B y X/Y)", { it.swapAB }) { c, v -> c.copy(swapAB = v) }) +
             Trigger.entries.map { trigger ->
@@ -124,8 +139,6 @@ private fun sections(): List<Section> = listOf(
                     c.copy(shortcuts = c.shortcuts + (trigger.name to v))
                 }
             } + listOf(
-                Toggle("Sonidos", { it.sound }) { c, v -> c.copy(sound = v) },
-                Toggle("Vibración", { it.haptics }) { c, v -> c.copy(haptics = v) },
                 Act("Puntero con mando (L3 + R3)", { if (Actions.pointerEnabled()) "activado" else "desactivado" }) {
                     Actions.open(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 },

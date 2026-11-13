@@ -12,6 +12,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.system.Actions
+import dev.palanca.launcher.system.Privileged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,6 +131,17 @@ object Diagnostics {
             val process = Runtime.getRuntime().exec("getprop")
             process.inputStream.bufferedReader().useLines { lines ->
                 lines.filter { INTERESTING.containsMatchIn(it) }.take(150).forEach { append(it).append('\n') }
+            }
+        }
+
+        section("Servicio privilegiado (PServer)") {
+            append("disponible: ${Privileged.available()}\n")
+            if (Privileged.available()) {
+                for (command in listOf(
+                    "id", "settings get system fan_mode", "settings get system performance_mode",
+                    "ls /sys/class/hwmon/", "cat /sys/class/hwmon/hwmon*/name", "cat /sys/class/hwmon/hwmon*/fan1_input",
+                    "dumpsys SurfaceFlinger --timestats -dump | head -c 1200",
+                )) append("$ $command\n").append(Privileged.output(command)?.trim()?.take(1400) ?: "(sin salida)").append('\n')
             }
         }
 

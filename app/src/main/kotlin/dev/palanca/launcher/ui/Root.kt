@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.Density
 import dev.palanca.launcher.Env
 import androidx.compose.ui.unit.dp
 import dev.palanca.launcher.data.DEFAULT_PINS
+import dev.palanca.launcher.system.Music
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -64,9 +65,22 @@ fun PalancaRoot() {
             }
             val stack = Env.nav.stack
             val base = stack.indexOfLast { !it.overlay }.coerceAtLeast(0)
+            // Música de fondo: solo con Inicio o el cajón como pantalla de base y el launcher delante.
+            val foreground by Env.foreground.collectAsState()
+            val calm = stack.getOrNull(base).let { it is HomeScreen || it is DrawerScreen }
+            LaunchedEffect(calm, foreground, cfg.music, cfg.musicOn, cfg.musicVolume) {
+                Music.update(calm && foreground && cfg.musicOn, cfg.music, cfg.musicVolume)
+            }
             for (i in base until stack.size) {
                 val screen = stack[i]
-                key(screen) { Box(Modifier.fillMaxSize()) { screen.Content() } }
+                // Las pantallas entran subiendo y ganando opacidad; el cajón sube desde más abajo.
+                // Inicio no se anima (ya está ahí) y las ventanas traen su propia entrada.
+                val motion = when {
+                    screen is HomeScreen || screen.overlay -> Modifier
+                    screen is DrawerScreen -> Modifier.enter(70.dp, 1f, 260)
+                    else -> Modifier.enter(26.dp, 0.985f, 230)
+                }
+                key(screen) { Box(Modifier.fillMaxSize().then(motion)) { screen.Content() } }
             }
         }
     }

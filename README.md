@@ -19,6 +19,11 @@ entera con **sticks, cruceta y botones**, sin tocar la pantalla. También funcio
 - **Temas y copias de seguridad** exportables a un archivo `.zip`.
 - Sonidos y vibración al navegar (se pueden apagar).
 
+- **Carrusel de Inicio**: la app enfocada queda en el centro, más grande; botón **Jugar** que abre tu frontend de juegos.
+- **Menús en ventanas flotantes** y transiciones de entrada entre pantallas.
+- **Sonido**: tres paquetes de efectos sintetizados (suave, arcade, mecánico) y **música de fondo** con tus propias canciones, solo en Inicio y en el cajón.
+- **Modos de la consola** (Retroid/AYN): rendimiento y ventilador desde el panel rápido, usando el servicio PServer del firmware. El formato de ese servicio está documentado por [ClusterTune](https://github.com/AurelioB/ClusterTune) (MIT, © Aurelio Bernal).
+
 ## Instalar
 
 1. Descarga `palanca.apk` desde **Releases** de este repositorio (se genera solo con cada cambio en `main`).

@@ -222,7 +222,8 @@ class PointerService : AccessibilityService() {
             ringVx += (-STIFFNESS * ringX - DAMPING * ringVx) * dt
             ringVy += (-STIFFNESS * ringY - DAMPING * ringVy) * dt
             ringX += ringVx * dt; ringY += ringVy * dt
-            val limit = sizePx / 2f - 12f * density
+            // El anillo se retrasa como mucho hasta que el punto toca su borde interior: nunca se sale.
+            val limit = 5.2f * density
             val length = hypot(ringX, ringY)
             if (length > limit) { ringX *= limit / length; ringY *= limit / length }
             cursor?.invalidate()

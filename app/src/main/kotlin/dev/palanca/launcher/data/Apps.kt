@@ -38,7 +38,7 @@ private val EMULATORS = listOf(
     "me.magnum.melonds", "com.dsemu.drastic", "org.mupen64plusae", "com.flycast", "org.vita3k",
     "net.rpcsx", "aenu.aps3e", "com.explusalpha", "org.scummvm", "com.winlator", "com.micewine",
     "org.devmiyax.yabasanshiro", "com.github.eka2l1", "paulscode.android.mupen64plus", "io.github.mandarine3ds",
-    "org.es_de", "com.magneticchen.daijishou",
+    "org.es_de", "rip.moth.cocoonshell", "com.magneticchen.daijishou",
     "org.pegasus_frontend", "net.kdt.pojavlaunch", "com.gamenative",
 )
 private val GAME_HINTS = listOf(

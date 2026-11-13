@@ -1,6 +1,7 @@
 package dev.palanca.launcher.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -35,7 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,10 +69,10 @@ import dev.palanca.launcher.input.PadEvent
  */
 object P {
     val Bg = Color(0xFF050505)
-    val Ink = Color(0xFFEDEAE3)
-    val Dim = Color(0xFF9C988F)
-    val Line = Color(0xFF2E2C29)
-    val Panel = Color(0xFF10100F)
+    val Ink = Color(0xFFF2F3F5)
+    val Dim = Color(0xFF9DA1AA)
+    val Line = Color(0xFF282A30)
+    val Panel = Color(0xFF131418)
 
     /** Texto sobre el color de acento: oscuro o claro según lo luminoso que sea el acento. */
     var OnAccent by mutableStateOf(Color(0xFF140A04))
@@ -82,6 +84,7 @@ object P {
 }
 
 val ACCENTS = listOf(
+    0xFF7C8CFF to "Índigo", 0xFF4FE3D0 to "Turquesa",
     0xFFFF6A2B to "Naranja", 0xFFFFB53D to "Ámbar", 0xFF5FE3B0 to "Menta",
     0xFF7FB0FF to "Azul", 0xFFFF7DA0 to "Rosa", 0xFFEDEAE3 to "Hueso",
 )
@@ -110,8 +113,9 @@ private val jetBrains = { variable(R.font.jetbrains_mono) }
 private val vt323 = { fixed(R.font.vt323) }
 
 val FONT_THEMES = listOf(
+    FontTheme("halo", "Outfit (limpia)", 1f, { variable(R.font.outfit) }, { variable(R.font.outfit) }),
     FontTheme("grotesk", "Space Grotesk", 1f, { variable(R.font.space_grotesk) }, spaceMono),
-    FontTheme("outfit", "Outfit", 1f, { variable(R.font.outfit) }, dmMono),
+    FontTheme("outfit", "Outfit + mono", 1f, { variable(R.font.outfit) }, dmMono),
     FontTheme("sora", "Sora", 0.94f, { variable(R.font.sora) }, jetBrains),
     FontTheme("rubik", "Rubik", 1f, { variable(R.font.rubik) }, dmMono),
     FontTheme("comfortaa", "Comfortaa", 0.94f, { variable(R.font.comfortaa) }, dmMono),
@@ -140,8 +144,8 @@ val LocalCfg = compositionLocalOf { Config() }
 /** Sube cuando cambian las apps instaladas: invalida los iconos sin que cada uno observe el flujo. */
 val LocalIconGen = compositionLocalOf { 0 }
 
-/** Esquina superior derecha cortada: el gesto que se repite en paneles, etiquetas y botones. */
-fun chamfer(cut: Dp = 14.dp): Shape = CutCornerShape(topStart = 0.dp, topEnd = cut, bottomEnd = 0.dp, bottomStart = 0.dp)
+/** Forma base de paneles, filas y botones: esquinas redondeadas, proporcionales al tamaño de la pieza. */
+fun chamfer(cut: Dp = 14.dp): Shape = RoundedCornerShape(cut * 1.4f)
 
 // ---- Navegación entre pantallas --------------------------------------------------------
 
@@ -186,29 +190,43 @@ fun T(
 /** Rótulo técnico: mayúsculas, monoespaciado, atenuado. */
 @Composable
 fun Label(text: String, color: Color = P.Dim, modifier: Modifier = Modifier, size: Int = 12) =
-    T(text.uppercase(), size, color, mono = true, spacing = 1.4f, modifier = modifier)
+    T(text.uppercase(), size, color, FontWeight.Medium, spacing = 0.9f, modifier = modifier)
 
-/** Corchetes de foco: cuatro esquinas que se cierran sobre el elemento seleccionado. */
+/**
+ * Indicador de foco: un anillo redondeado con un halo tenue que se ciñe al elemento.
+ * (Conserva el nombre histórico "brackets"; [len] ya no se usa.)
+ */
+@Suppress("UNUSED_PARAMETER")
 fun Modifier.brackets(on: Boolean, color: Color, gap: Dp = 7.dp, len: Dp = 14.dp, stroke: Dp = 3.dp): Modifier {
     // Sin foco no hay nada que animar ni que dibujar: cero coste para el resto de la rejilla.
     if (!on) return this
     return composed {
         val anim = remember { Animatable(0f) }
-        LaunchedEffect(Unit) { anim.animateTo(1f, tween(110)) }
+        LaunchedEffect(Unit) { anim.animateTo(1f, tween(160)) }
         drawWithContent {
             drawContent()
             val t = anim.value
-            val g = gap.toPx() + (1f - t) * 12.dp.toPx()
-            val l = len.toPx(); val w = stroke.toPx()
-            val c = color.copy(alpha = t)
-            val x0 = -g; val y0 = -g; val x1 = size.width + g; val y1 = size.height + g
-            fun line(ax: Float, ay: Float, bx: Float, by: Float) =
-                drawLine(c, Offset(ax, ay), Offset(bx, by), w, StrokeCap.Square)
-            line(x0, y0, x0 + l, y0); line(x0, y0, x0, y0 + l)
-            line(x1, y0, x1 - l, y0); line(x1, y0, x1, y0 + l)
-            line(x0, y1, x0 + l, y1); line(x0, y1, x0, y1 - l)
-            line(x1, y1, x1 - l, y1); line(x1, y1, x1, y1 - l)
+            val g = gap.toPx() + (1f - t) * 10.dp.toPx()
+            val w = stroke.toPx() * 0.85f
+            val box = Size(size.width + 2 * g, size.height + 2 * g)
+            val radius = (minOf(size.width, size.height) * 0.30f).coerceAtMost(30.dp.toPx()) + g
+            val corner = CornerRadius(radius, radius)
+            drawRoundRect(color.copy(alpha = 0.22f * t), Offset(-g, -g), box, corner, Stroke(w * 3.2f))
+            drawRoundRect(color.copy(alpha = t), Offset(-g, -g), box, corner, Stroke(w))
         }
+    }
+}
+
+/** Entrada de ventanas y pantallas: aparecen subiendo un poco y ganando opacidad. */
+fun Modifier.enter(rise: Dp = 22.dp, fromScale: Float = 1f, millis: Int = 240): Modifier = composed {
+    val anim = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { anim.animateTo(1f, tween(millis, easing = FastOutSlowInEasing)) }
+    graphicsLayer {
+        val t = anim.value
+        alpha = t
+        translationY = (1f - t) * rise.toPx()
+        val k = fromScale + (1f - fromScale) * t
+        scaleX = k; scaleY = k
     }
 }
 
@@ -224,14 +242,14 @@ fun Modifier.focusScale(on: Boolean, to: Float = 1.12f): Modifier {
 
 @Composable
 fun Panel(modifier: Modifier = Modifier, cut: Dp = 16.dp, content: @Composable BoxScope.() -> Unit) =
-    Box(modifier.background(P.Panel, chamfer(cut)).border(1.dp, P.Line, chamfer(cut)), content = content)
+    Box(modifier.background(P.Panel, chamfer(cut)), content = content)
 
 /** Barra de segmentos: nivel de batería, espacio, deslizadores. */
 @Composable
 fun Segments(fraction: Float, color: Color, modifier: Modifier = Modifier, count: Int = 16, height: Dp = 10.dp) {
     val lit = (fraction.coerceIn(0f, 1f) * count + 0.5f).toInt()
     Row(modifier.height(height), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        repeat(count) { i -> Box(Modifier.weight(1f).height(height).background(if (i < lit) color else P.Line)) }
+        repeat(count) { i -> Box(Modifier.weight(1f).height(height).background(if (i < lit) color else P.Ink.copy(alpha = 0.13f), RoundedCornerShape(2.dp))) }
     }
 }
 
@@ -295,7 +313,7 @@ fun ListRow(
     val accent = LocalAccent.current
     Row(
         modifier.fillMaxWidth().height(height)
-            .background(if (selected) P.Panel else Color.Transparent, chamfer(12.dp))
+            .background(if (selected) P.Line else Color.Transparent, chamfer(12.dp))
             .brackets(selected, accent, gap = 2.dp, len = 10.dp, stroke = 2.5.dp)
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,

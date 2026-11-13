@@ -91,7 +91,7 @@ private fun StatTile(
         ) {
             Column(Modifier.weight(1f)) {
                 val ringed = style == "anillo"
-                Label(if (big && !ringed) "%02d — %s".format(number, metric.title) else metric.title, size = if (big) 12 else if (mini) 9 else 10)
+                Label(metric.title, size = if (big) 12 else if (mini) 9 else 10)
                 Spacer(Modifier.height(if (big) 8.dp else if (mini) 2.dp else 4.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     T(r.value, valueSize, if (r.available) P.Ink else P.Dim, FontWeight.Medium)

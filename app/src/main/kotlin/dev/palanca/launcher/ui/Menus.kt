@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,9 +37,12 @@ import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.Actions
 
+/** Fondo de las ventanas flotantes: un punto más claro que los paneles. */
+val WINDOW = Color(0xFF191A1F)
+
 class MenuItem(val label: String, val value: String = "", val keep: Boolean = false, val run: () -> Unit)
 
-/** Panel lateral con una lista de acciones. Se usa para los menús de app, widget y categoría. */
+/** Ventana flotante con una lista de acciones. Se usa para los menús de app, widget y categoría. */
 class MenuScreen(
     private val index: String, private val title: String, private val items: () -> List<MenuItem>,
 ) : Screen {
@@ -68,8 +73,9 @@ class MenuScreen(
         val list = items()
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).tap { Env.nav.pop() }) {
             Column(
-                Modifier.align(Alignment.CenterEnd).width(430.dp).fillMaxHeight().background(P.Bg)
-                    .tap { }.padding(start = 22.dp, end = 22.dp, top = 30.dp, bottom = 24.dp),
+                Modifier.align(Alignment.Center).width(540.dp).heightIn(max = 610.dp).enter(18.dp, 0.94f, 200)
+                    .background(WINDOW, RoundedCornerShape(34.dp))
+                    .tap { }.padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 20.dp),
             ) {
                 T(index, 14, LocalAccent.current, FontWeight.Bold, mono = true)
                 Spacer(Modifier.height(6.dp))
@@ -78,7 +84,7 @@ class MenuScreen(
                 val current = sel.coerceIn(0, (list.size - 1).coerceAtLeast(0))
                 val state = rememberLazyListState()
                 LaunchedEffect(current) { if (list.isNotEmpty()) state.animateScrollToItem((current - 4).coerceAtLeast(0)) }
-                LazyColumn(Modifier.weight(1f), state = state, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                LazyColumn(Modifier.weight(1f, fill = false), state = state, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     itemsIndexed(list) { i, item ->
                         ListRow(item.label, item.value, i == current, Modifier.tap { sel = i; run(item) }, height = 50.dp)
                     }

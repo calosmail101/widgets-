@@ -1,11 +1,13 @@
 package dev.palanca.launcher.ui
 
 import android.appwidget.AppWidgetHostView
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -49,28 +54,21 @@ import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.Actions
 
-/** Toque (y toque largo opcional) sin efectos visuales: el foco ya lo marcan los corchetes. */
+/** Toque (y toque largo opcional) sin efectos visuales: el foco ya lo marca el anillo. */
 fun Modifier.tap(onLong: (() -> Unit)? = null, onTap: () -> Unit): Modifier = composed {
     val tapNow by rememberUpdatedState(onTap)
     val longNow by rememberUpdatedState(onLong)
     pointerInput(Unit) { detectTapGestures(onTap = { tapNow() }, onLongPress = { longNow?.invoke() }) }
 }
 
-/** Icono + etiqueta con corchetes de foco. La pieza que comparten el Inicio y el cajón. */
+/** Icono + etiqueta con anillo de foco. La pieza del cajón y de los resultados de búsqueda. */
 @Composable
 fun AppTile(
     app: AppEntry, size: Dp, selected: Boolean, modifier: Modifier = Modifier,
     onTap: () -> Unit = {}, onLong: () -> Unit = {},
 ) {
     val cfg = LocalCfg.current
-    val tapNow by rememberUpdatedState(onTap)
-    val longNow by rememberUpdatedState(onLong)
-    Column(
-        modifier.width(size + 44.dp).pointerInput(Unit) {
-            detectTapGestures(onTap = { tapNow() }, onLongPress = { longNow() })
-        },
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    Column(modifier.width(size + 44.dp).tap(onLong, onTap), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.focusScale(selected).brackets(selected, LocalAccent.current)) { AppIcon(app, size) }
         if (cfg.look.labels) {
             Spacer(Modifier.height(16.dp))
@@ -103,16 +101,27 @@ fun duration(ms: Long): String {
     return if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
 }
 
+/** Elige la app que abre el botón Jugar: primero frontends, emuladores y juegos; después el resto. */
+fun playAppPicker() = MenuScreen("JUGAR", "¿Qué abre el botón Jugar?") {
+    val cfg = Env.cfg.value
+    val apps = Env.apps.apps.value.filter { it.key !in cfg.hidden }
+    val (games, rest) = apps.partition { it.categoryIn(cfg).let { c -> c == Cat.EMULADORES || c == Cat.JUEGOS } }
+    (games + rest).map { app ->
+        MenuItem(app.labelIn(cfg), if (app.key == cfg.playApp) "actual" else "") { Env.cfg.update { it.copy(playApp = app.key) } }
+    }
+}
+
 class HomeScreen : Screen {
     private var page by mutableIntStateOf(0)
-    private var zone by mutableIntStateOf(0) // 0 = barra de apps, 1 = tarjetas
-    private var card by mutableIntStateOf(0)
+    private var zone by mutableIntStateOf(0) // 0 = carrusel · 1 = tarjetas · 2 = botón Jugar
     private var dock by mutableIntStateOf(0)
+    private var card by mutableIntStateOf(0)
     private var widget by mutableIntStateOf(0)
 
     fun reset() { page = 0; zone = 0 }
 
     private fun pins() = pinnedApps(Env.cfg.value, Env.apps.apps.value)
+    private fun playApp(cfg: Config) = Env.apps.apps.value.firstOrNull { it.key == cfg.playApp }
 
     override fun onPad(e: PadEvent): Boolean {
         val cfg = Env.cfg.value
@@ -140,13 +149,21 @@ class HomeScreen : Screen {
         val stats = statList(cfg)
         val offset = if (cfg.look.cardContinue && Actions.lastApp() != null) 1 else 0
         val total = offset + stats.size
-        if (zone == 1 && total == 0) zone = 0
+        if (zone == 1 && total == 0) zone = 2
         card = card.coerceIn(0, (total - 1).coerceAtLeast(0))
         val cols = statCols(statSize(cfg.look, stats.size))
         val stat = card - offset // -1 = tarjeta "continuar"
 
-        if (zone == 1) {
-            when (e.btn) {
+        when (zone) {
+            2 -> when (e.btn) {
+                Btn.RIGHT -> if (total > 0) zone = 1
+                Btn.DOWN, Btn.B -> zone = 0
+                Btn.A -> playApp(cfg)?.let(Actions::launch) ?: Env.nav.push(playAppPicker())
+                Btn.X -> Env.nav.push(playAppPicker())
+                Btn.UP, Btn.LEFT -> Unit
+                else -> return false
+            }
+            1 -> when (e.btn) {
                 Btn.UP -> if (stat >= cols) card -= cols else if (stat >= 0 && offset == 1) card = 0
                 Btn.DOWN -> when {
                     stat < 0 -> if (stats.isNotEmpty()) card = 1 else zone = 0
@@ -154,33 +171,34 @@ class HomeScreen : Screen {
                     stat / cols < (stats.size - 1) / cols -> card = total - 1
                     else -> zone = 0
                 }
-                Btn.LEFT, Btn.RIGHT -> if (stat >= 0) card = offset + gridMove(stat, stats.size, cols, e.btn)
+                // Desde la columna izquierda de las tarjetas se pasa al botón Jugar.
+                Btn.LEFT -> if (stat < 0 || stat % cols == 0) zone = 2 else card--
+                Btn.RIGHT -> if (stat >= 0) card = offset + gridMove(stat, stats.size, cols, Btn.RIGHT)
                 Btn.A, Btn.X -> if (stat < 0) Actions.lastApp()?.let(Actions::launch) else Env.nav.push(statMenu(stats[stat], ::followStat))
                 Btn.B -> zone = 0
                 else -> return false
             }
-            return true
-        }
-        when (e.btn) {
-            Btn.LEFT -> dock = (dock - 1).coerceAtLeast(0)
-            Btn.RIGHT -> dock = (dock + 1).coerceAtMost(pins.size)
-            Btn.UP -> if (total > 0) zone = 1
-            Btn.DOWN -> Env.nav.push(DrawerScreen())
-            Btn.A -> if (app != null) Actions.launch(app) else Env.nav.push(DrawerScreen())
-            Btn.X -> if (app != null) Env.nav.push(appMenu(app))
-            Btn.RS_LEFT, Btn.RS_RIGHT -> if (app != null) {
-                val to = (dock + if (e.btn == Btn.RS_LEFT) -1 else 1)
-                if (to in pins.indices) {
-                    Env.cfg.update { c ->
-                        val list = c.pinned.toMutableList()
-                        val i = list.indexOf(app.key); val j = list.indexOf(pins[to].key)
-                        if (i >= 0 && j >= 0) { list[i] = list[j].also { list[j] = list[i] } }
-                        c.copy(pinned = list)
+            else -> when (e.btn) {
+                Btn.LEFT -> dock = (dock - 1).coerceAtLeast(0)
+                Btn.RIGHT -> dock = (dock + 1).coerceAtMost(pins.size)
+                Btn.UP -> zone = 2
+                Btn.DOWN -> Env.nav.push(DrawerScreen())
+                Btn.A -> if (app != null) Actions.launch(app) else Env.nav.push(DrawerScreen())
+                Btn.X -> if (app != null) Env.nav.push(appMenu(app))
+                Btn.RS_LEFT, Btn.RS_RIGHT -> if (app != null) {
+                    val to = (dock + if (e.btn == Btn.RS_LEFT) -1 else 1)
+                    if (to in pins.indices) {
+                        Env.cfg.update { c ->
+                            val list = c.pinned.toMutableList()
+                            val i = list.indexOf(app.key); val j = list.indexOf(pins[to].key)
+                            if (i >= 0 && j >= 0) { list[i] = list[j].also { list[j] = list[i] } }
+                            c.copy(pinned = list)
+                        }
+                        dock = to
                     }
-                    dock = to
                 }
+                else -> return false
             }
-            else -> return false
         }
         return true
     }
@@ -210,26 +228,30 @@ class HomeScreen : Screen {
         val battery by rememberBattery()
         Box(Modifier.fillMaxSize()) {
             Wallpaper(look)
-            Column(Modifier.fillMaxSize().padding(start = 56.dp, end = 56.dp, top = 30.dp, bottom = 24.dp)) {
-                // Cabecera: páginas a la izquierda, estado a la derecha.
-                Row(Modifier.fillMaxWidth().height(28.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.fillMaxSize().padding(start = 56.dp, end = 56.dp, top = 26.dp, bottom = 20.dp)) {
+                // Cabecera: páginas a la izquierda, conectividad y batería a la derecha.
+                Row(Modifier.fillMaxWidth().height(38.dp), verticalAlignment = Alignment.CenterVertically) {
                     listOf("Inicio", "Widgets").forEachIndexed { i, name ->
                         val on = i == page
-                        Box(Modifier.tap { page = i; zone = 0 }) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                T("0${i + 1}", 13, if (on) accent else P.Dim, FontWeight.Bold, mono = true)
-                                Spacer(Modifier.width(8.dp))
-                                Label(name, if (on) P.Ink else P.Dim, size = 13)
-                            }
-                        }
-                        Spacer(Modifier.width(28.dp))
+                        Box(
+                            Modifier.height(36.dp).background(if (on) P.Panel else Color.Transparent, CircleShape)
+                                .tap { page = i; zone = 0 }.padding(horizontal = 18.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { T(name, 15, if (on) P.Ink else P.Dim, if (on) FontWeight.Medium else FontWeight.Normal) }
+                        Spacer(Modifier.width(6.dp))
                     }
+                    Spacer(Modifier.width(10.dp))
                     Glyph("L1"); Spacer(Modifier.width(6.dp)); Glyph("R1")
                     Spacer(Modifier.weight(1f))
-                    if (battery.percent >= 0) {
-                        Label(if (battery.charging) "Cargando" else "Batería", size = 13)
-                        Spacer(Modifier.width(10.dp))
-                        T("${battery.percent} %", 13, P.Ink, FontWeight.Bold, mono = true)
+                    val foreground by Env.foreground.collectAsState()
+                    val (wifi, bluetooth) = remember(foreground) {
+                        fun on(key: String) = runCatching { Settings.Global.getInt(Env.ctx.contentResolver, key) != 0 }.getOrDefault(false)
+                        on("wifi_on") to on("bluetooth_on")
+                    }
+                    Row(Modifier.tap { Env.nav.push(QuickPanel()) }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatusPill("Wi‑Fi", wifi)
+                        StatusPill("Bluetooth", bluetooth)
+                        if (battery.percent >= 0) StatusPill("${battery.percent} %" + if (battery.charging) " · cargando" else "", true)
                     }
                 }
 
@@ -238,29 +260,60 @@ class HomeScreen : Screen {
                     Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         val now by rememberNow(look.clockSeconds)
                         Column(Modifier.weight(1f)) {
-                            ClockView(look, if (look.clockSeconds) 112.dp else 150.dp, now)
+                            ClockView(look, if (look.clockSeconds) 104.dp else 138.dp, now)
                             if (look.clockDate) {
-                                Spacer(Modifier.height(22.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.width(26.dp).height(3.dp).background(accent))
-                                    Spacer(Modifier.width(12.dp))
-                                    Label(dateText(now), P.Ink, size = 17)
-                                }
+                                Spacer(Modifier.height(10.dp))
+                                T(dateText(now).replaceFirstChar { it.uppercase() }, 21, P.Dim)
                             }
+                            Spacer(Modifier.height(26.dp))
+                            PlayButton(cfg, apps.firstOrNull { it.key == cfg.playApp }, zone == 2)
                         }
                         Cards(cfg, apps, if (zone == 1) card else -1)
                     }
-                    Dock(pins, look.dockSize.dp, if (zone == 0) dock else -1)
+                    Carousel(pins, look.dockSize.dp, dock.coerceIn(0, pins.size), zone == 0)
                     HintBar(
-                        if (zone == 1) listOf("A" to "Abrir / cambiar", "B" to "Volver")
-                        else listOf("A" to "Abrir", "X" to "Opciones", "Y" to "Buscar", "RS" to "Mover", "START" to "Personalizar"),
-                        left = "${apps.size} apps",
+                        when (zone) {
+                            1 -> listOf("A" to "Abrir / cambiar", "B" to "Volver")
+                            2 -> listOf("A" to "Jugar", "X" to "Elegir app", "B" to "Volver")
+                            else -> listOf("A" to "Abrir", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "Panel", "START" to "Personalizar")
+                        },
                     )
                 } else {
                     WidgetPage(cfg, Modifier.weight(1f))
                     HintBar(listOf("A" to "Opciones", "B" to "Inicio"), left = "${cfg.widgets.size} widgets")
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun StatusPill(text: String, on: Boolean) {
+        Row(
+            Modifier.height(36.dp).background(P.Panel, CircleShape).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Dot(if (on) LocalAccent.current else P.Line, 8.dp)
+            Spacer(Modifier.width(9.dp))
+            T(text, 14, if (on) P.Ink else P.Dim)
+        }
+    }
+
+    @Composable
+    private fun PlayButton(cfg: Config, app: AppEntry?, selected: Boolean) {
+        val accent = LocalAccent.current
+        Row(
+            Modifier.height(60.dp).brackets(selected, P.Ink, gap = 5.dp).background(accent, CircleShape)
+                .tap(onLong = { Env.nav.push(playAppPicker()) }) {
+                    zone = 2
+                    app?.let(Actions::launch) ?: Env.nav.push(playAppPicker())
+                }.padding(start = 10.dp, end = 26.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (app != null) AppIcon(app, 40.dp) else Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(12.dp))
+            T("Jugar", 19, P.OnAccent, FontWeight.Bold)
+            Spacer(Modifier.width(10.dp))
+            T(app?.labelIn(cfg) ?: "elige tu frontend", 15, P.OnAccent.copy(alpha = 0.78f))
         }
     }
 
@@ -272,25 +325,20 @@ class HomeScreen : Screen {
         val last = remember(stats, apps) { apps.filter { (stats.usage[it.key]?.last ?: 0) > 0 }.maxByOrNull { stats.usage[it.key]!!.last } }
         val showContinue = look.cardContinue && last != null
         val offset = if (showContinue) 1 else 0
-        Column(Modifier.width(420.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.width(430.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (showContinue && last != null) {
                 val usage = stats.usage[last.key]!!
                 val game = last.categoryIn(cfg).let { it == Cat.JUEGOS || it == Cat.EMULADORES }
                 Panel(Modifier.fillMaxWidth().brackets(selected == 0, accent).tap { Actions.launch(last) }) {
-                    Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                        Label(if (game) "01 — Seguir jugando" else "01 — Continuar")
-                        Spacer(Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            AppIcon(last, 54.dp)
-                            Spacer(Modifier.width(14.dp))
-                            Column {
-                                T(last.labelIn(cfg), 19, weight = FontWeight.Medium)
-                                Spacer(Modifier.height(3.dp))
-                                T(
-                                    ago(usage.last) + if (usage.lastSessionMs > 0) " · sesión de ${duration(usage.lastSessionMs)}" else "",
-                                    13, P.Dim, mono = true,
-                                )
-                            }
+                    Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AppIcon(last, 56.dp)
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Label(if (game) "Seguir jugando" else "Continuar")
+                            Spacer(Modifier.height(4.dp))
+                            T(last.labelIn(cfg), 20, weight = FontWeight.Medium)
+                            Spacer(Modifier.height(2.dp))
+                            T(ago(usage.last) + if (usage.lastSessionMs > 0) " · sesión de ${duration(usage.lastSessionMs)}" else "", 13, P.Dim)
                         }
                     }
                 }
@@ -302,38 +350,54 @@ class HomeScreen : Screen {
         }
     }
 
+    /**
+     * Carrusel de apps fijadas: una sola fila en la que la app enfocada queda siempre en el centro,
+     * más grande y con su nombre; las demás se deslizan a los lados, atenuadas.
+     */
     @Composable
-    private fun Dock(pins: List<AppEntry>, size: Dp, selected: Int) {
-        val state = rememberLazyListState()
-        LaunchedEffect(selected) { if (selected >= 0) state.animateScrollToItem((selected - 3).coerceAtLeast(0)) }
-        LazyRow(
-            Modifier.fillMaxWidth().height(size + 84.dp), state = state,
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
-        ) {
-            itemsIndexed(pins, key = { _, a -> a.key }) { i, app ->
-                AppTile(
-                    app, size, selected == i,
-                    onTap = { dock = i; zone = 0; Actions.launch(app) },
-                    onLong = { dock = i; zone = 0; Env.nav.push(appMenu(app)) },
-                )
-            }
-            item(key = "todas") {
-                val on = selected == pins.size
-                Column(
-                    Modifier.width(size + 44.dp).tap { Env.nav.push(DrawerScreen()) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        Modifier.size(size).brackets(on, LocalAccent.current).border(1.5.dp, if (on) P.Ink else P.Line, chamfer(18.dp)),
-                        contentAlignment = Alignment.Center,
+    private fun Carousel(pins: List<AppEntry>, size: Dp, selected: Int, active: Boolean) {
+        val cfg = LocalCfg.current
+        val slot = size + 34.dp
+        BoxWithConstraints(Modifier.fillMaxWidth().height(size * 1.3f + 62.dp)) {
+            val state = rememberLazyListState()
+            LaunchedEffect(selected) { state.animateScrollToItem(selected) }
+            LazyRow(
+                Modifier.fillMaxSize(), state = state,
+                // El relleno lateral hace que el primer y el último elemento también puedan centrarse.
+                contentPadding = PaddingValues(horizontal = (maxWidth - slot) / 2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                itemsIndexed(pins, key = { _, a -> a.key }) { i, app ->
+                    val on = i == selected
+                    Column(
+                        Modifier.width(slot).tap(onLong = { dock = i; zone = 0; Env.nav.push(appMenu(app)) }) {
+                            if (dock == i && zone == 0) Actions.launch(app) else { dock = i; zone = 0 }
+                        },
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            repeat(3) { Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) { repeat(3) { Dot(if (on) P.Ink else P.Dim, 5.dp) } } }
-                        }
+                        Box(
+                            Modifier.focusScale(on, 1.3f).brackets(on && active, LocalAccent.current, gap = 5.dp)
+                                .alpha(if (on) 1f else 0.62f)
+                        ) { AppIcon(app, size) }
+                        Spacer(Modifier.height(size * 0.15f + 14.dp))
+                        T(app.labelIn(cfg), 16, if (on) P.Ink else Color.Transparent, FontWeight.Medium, align = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                     }
-                    Spacer(Modifier.height(16.dp))
-                    T("Todas", 14, if (on) P.Ink else P.Dim, if (on) FontWeight.Medium else FontWeight.Normal)
+                }
+                item(key = "todas") {
+                    val on = selected == pins.size
+                    Column(Modifier.width(slot).tap { Env.nav.push(DrawerScreen()) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            Modifier.size(size).focusScale(on, 1.3f).brackets(on && active, LocalAccent.current, gap = 5.dp)
+                                .alpha(if (on) 1f else 0.62f).border(1.5.dp, if (on) P.Ink else P.Dim, chamfer(size * 0.2f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                repeat(3) { Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) { repeat(3) { Dot(if (on) P.Ink else P.Dim, 5.dp) } } }
+                            }
+                        }
+                        Spacer(Modifier.height(size * 0.15f + 14.dp))
+                        T("Todas las apps", 16, if (on) P.Ink else Color.Transparent, FontWeight.Medium, align = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         }

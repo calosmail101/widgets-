@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PointMode
@@ -219,6 +220,7 @@ fun rememberBattery(): State<Battery> {
 // ---- Fondo ------------------------------------------------------------------------------
 
 val WALLPAPERS = listOf(
+    "aurora" to "Aurora",
     "trama" to "Trama de puntos", "negro" to "Negro AMOLED", "constelacion" to "Constelación (animado)",
     "ondas" to "Ondas (animado)", "imagen" to "Imagen propia", "sistema" to "Fondo de Android",
 )
@@ -265,6 +267,14 @@ fun Wallpaper(look: Look, modifier: Modifier = Modifier) {
                 if (waves) drawWaves(t, accent) else drawStars(t, accent)
             }
         }
+        // Dos resplandores estáticos del color de acento: se dibujan una vez, no cuestan nada en marcha.
+        "aurora" -> Box(
+            modifier.fillMaxSize().background(P.Bg).drawWithCache {
+                val low = Brush.radialGradient(listOf(accent.copy(alpha = 0.30f), Color.Transparent), Offset(size.width * 0.06f, size.height * 1.08f), size.width * 0.62f)
+                val high = Brush.radialGradient(listOf(accent.copy(alpha = 0.13f), Color.Transparent), Offset(size.width * 1.0f, -size.height * 0.12f), size.width * 0.5f)
+                onDrawBehind { drawRect(low); drawRect(high) }
+            }
+        )
         else -> Box(
             modifier.fillMaxSize().background(P.Bg).drawWithCache {
                 val pitch = 26.dp.toPx()
