@@ -36,12 +36,20 @@ class InputTest {
     private fun axes(lx: Float = 0f, ly: Float = 0f, hatX: Float = 0f, hatY: Float = 0f, rx: Float = 0f, ry: Float = 0f, lt: Float = 0f) =
         input.onAxes(lx, ly, hatX, hatY, rx, ry, lt, 0f)
 
-    @Test fun shortPressFiresOnRelease() {
+    @Test fun normalButtonsFireTheInstantTheyArePressed() {
         input.onKey(KeyEvent.KEYCODE_BUTTON_A, true, 0)
+        assertEquals(listOf(PadEvent(Btn.A)), events)
+        clock.advance(GamepadInput.LONG_MS * 2) // mantenerlo no genera pulsación larga ni repeticiones
+        input.onKey(KeyEvent.KEYCODE_BUTTON_A, false, 0)
+        assertEquals(1, events.size)
+    }
+
+    @Test fun holdableButtonsFireOnRelease() {
+        input.onKey(KeyEvent.KEYCODE_BUTTON_START, true, 0)
         assertEquals(emptyList<PadEvent>(), events)
         clock.advance(100)
-        input.onKey(KeyEvent.KEYCODE_BUTTON_A, false, 0)
-        assertEquals(listOf(PadEvent(Btn.A)), events)
+        input.onKey(KeyEvent.KEYCODE_BUTTON_START, false, 0)
+        assertEquals(listOf(PadEvent(Btn.START)), events)
     }
 
     @Test fun longPressFiresOnceAndSuppressesShort() {

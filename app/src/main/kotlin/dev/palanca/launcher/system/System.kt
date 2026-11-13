@@ -11,6 +11,8 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.net.Uri
 import android.os.Environment
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.StatFs
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -160,6 +162,10 @@ class Feedback(private val ctx: Context) {
     private val vibrator = ctx.getSystemService(Vibrator::class.java)
     private var tracks: Map<String, AudioTrack>? = null
 
+    // Los sonidos se lanzan desde su propio hilo: el de la interfaz no espera nunca al audio.
+    private val audioThread = HandlerThread("palanca-fx").apply { start() }
+    private val audio = Handler(audioThread.looper)
+
     private fun tone(freq: Double, toFreq: Double, ms: Int, gain: Double): AudioTrack? = runCatching {
         val rate = 44100
         val n = rate * ms / 1000
@@ -186,6 +192,10 @@ class Feedback(private val ctx: Context) {
 
     private fun play(name: String) {
         if (!Env.cfg.value.sound) return
+        audio.post { playNow(name) }
+    }
+
+    private fun playNow(name: String) {
         val all = tracks ?: buildMap {
             tone(1500.0, 1300.0, 22, 0.16)?.let { put("move", it) }
             tone(880.0, 1320.0, 70, 0.22)?.let { put("select", it) }

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
+import dev.palanca.launcher.data.Config
 import dev.palanca.launcher.data.Look
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -59,11 +60,14 @@ import kotlin.math.sin
 
 // ---- Icono de app -----------------------------------------------------------------------
 
+fun iconScale(cfg: Config, app: AppEntry): Float =
+    (cfg.look.iconScale * (cfg.icons[app.key]?.scale ?: 1f)).coerceIn(0.6f, 1.4f)
+
 @Composable
 fun AppIcon(app: AppEntry, size: Dp, modifier: Modifier = Modifier) {
     val cfg = LocalCfg.current
-    val generation by Env.apps.generation.collectAsState()
-    val scale = (cfg.look.iconScale * (cfg.icons[app.key]?.scale ?: 1f)).coerceIn(0.6f, 1.4f)
+    val generation = LocalIconGen.current
+    val scale = iconScale(cfg, app)
     val px = with(LocalDensity.current) { (size * scale).roundToPx() }
     val key = Env.icons.keyFor(app, cfg, px, generation)
     var bitmap by remember(key) {

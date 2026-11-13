@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Point
 import android.os.Build
+import android.os.SystemClock
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.InputDevice
@@ -26,27 +27,38 @@ import kotlin.math.hypot
  * Puntero controlado con el mando para apps que solo entienden toques.
  *
  * Mantén L3 + R3 para activarlo o apagarlo. Con el puntero activo:
- * cruceta o stick = mover · A = tocar · X = toque largo · B = atrás ·
- * L1/R1 = desplazar arriba/abajo · START = salir.
+ * stick izquierdo o cruceta = mover · A = tocar · X = toque largo · B = atrás ·
+ * stick derecho o L1/R1 = desplazar · START = salir.
  *
- * Mientras está apagado no intercepta nada: los juegos reciben el mando intacto.
- * En Android 14+ también lee los sticks; en versiones anteriores solo puede leer teclas,
- * así que el movimiento depende de que la cruceta llegue como teclas DPAD.
+ * Cómo lee los sticks: mientras está activo, la ventana del cursor toma el foco de entrada,
+ * así que Android le entrega a ella los ejes del mando (funciona en cualquier versión).
+ * Apagado no hay ventana ni foco: los juegos reciben el mando intacto.
  */
 class PointerService : AccessibilityService() {
     companion object {
         @Volatile var instance: PointerService? = null
             private set
+
+        // Muelle del anillo: poco amortiguado para que rebote una vez y se asiente.
+        private const val STIFFNESS = 320f
+        private const val DAMPING = 15f
     }
 
     private var active = false
-    private var cursor: View? = null
+    private var cursor: CursorView? = null
     private var params: WindowManager.LayoutParams? = null
     private var x = 0f
     private var y = 0f
     private var screenW = 0
     private var screenH = 0
     private var sizePx = 0
+    private var density = 1f
+
+    // Anillo: desplazamiento respecto al punto y su velocidad.
+    private var ringX = 0f
+    private var ringY = 0f
+    private var ringVx = 0f
+    private var ringVy = 0f
 
     private var l3 = false
     private var r3 = false
@@ -54,6 +66,8 @@ class PointerService : AccessibilityService() {
     private val held = HashSet<Int>()
     private var stickX = 0f
     private var stickY = 0f
+    private var scrollY = 0f
+    private var lastSwipe = 0L
     private var looping = false
     private var lastFrame = 0L
 
@@ -67,7 +81,9 @@ class PointerService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
-    override fun onKeyEvent(event: KeyEvent): Boolean {
+    override fun onKeyEvent(event: KeyEvent): Boolean = handleKey(event)
+
+    private fun handleKey(event: KeyEvent): Boolean {
         val down = event.action == KeyEvent.ACTION_DOWN
         when (event.keyCode) {
             KeyEvent.KEYCODE_BUTTON_THUMBL -> l3 = down
@@ -84,7 +100,7 @@ class PointerService : AccessibilityService() {
             }
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { if (!down) tap(60); true }
             KeyEvent.KEYCODE_BUTTON_X -> { if (!down) tap(650); true }
-            KeyEvent.KEYCODE_BUTTON_B -> { if (!down) performGlobalAction(GLOBAL_ACTION_BACK); true }
+            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { if (!down) performGlobalAction(GLOBAL_ACTION_BACK); true }
             KeyEvent.KEYCODE_BUTTON_L1 -> { if (!down) swipe(+1); true }
             KeyEvent.KEYCODE_BUTTON_R1 -> { if (!down) swipe(-1); true }
             KeyEvent.KEYCODE_BUTTON_START -> { if (!down) setActive(false); true }
@@ -93,23 +109,51 @@ class PointerService : AccessibilityService() {
         }
     }
 
-    /** Android 14+: solo llega mientras el puntero está activo (ver [setActive]). */
-    override fun onMotionEvent(event: MotionEvent) {
-        if (!active || event.action != MotionEvent.ACTION_MOVE) return
-        fun pick(a: Float, b: Float, c: Float) = listOf(a, b, c).maxBy { abs(it) }
-        stickX = pick(event.getAxisValue(MotionEvent.AXIS_Z), event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_HAT_X))
-        stickY = pick(event.getAxisValue(MotionEvent.AXIS_RZ), event.getAxisValue(MotionEvent.AXIS_Y), event.getAxisValue(MotionEvent.AXIS_HAT_Y))
+    private fun onSticks(event: MotionEvent) {
+        fun pick(a: Float, b: Float) = if (abs(a) >= abs(b)) a else b
+        stickX = pick(event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_HAT_X))
+        stickY = pick(event.getAxisValue(MotionEvent.AXIS_Y), event.getAxisValue(MotionEvent.AXIS_HAT_Y))
+        scrollY = event.getAxisValue(MotionEvent.AXIS_RZ)
         startLoop()
+    }
+
+    /** Ventana del cursor. Toma el foco de entrada para recibir los ejes del mando. */
+    private inner class CursorView(context: Context, private val accent: Int) : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        init { isFocusable = true; isFocusableInTouchMode = true }
+
+        override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+            if (event.isFromSource(InputDevice.SOURCE_JOYSTICK) && event.action == MotionEvent.ACTION_MOVE) {
+                onSticks(event)
+                return true
+            }
+            return super.dispatchGenericMotionEvent(event)
+        }
+
+        // Normalmente las teclas ya llegan por onKeyEvent; esto cubre el caso de que el sistema no las filtre.
+        override fun dispatchKeyEvent(event: KeyEvent): Boolean = handleKey(event) || super.dispatchKeyEvent(event)
+
+        override fun onDraw(canvas: Canvas) {
+            val c = width / 2f
+            val ring = 9f * density
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3.4f * density; paint.color = 0xB0000000.toInt()
+            canvas.drawCircle(c + ringX, c + ringY, ring, paint)
+            paint.strokeWidth = 1.8f * density; paint.color = accent
+            canvas.drawCircle(c + ringX, c + ringY, ring, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = 0xB0000000.toInt()
+            canvas.drawCircle(c, c, 3.6f * density, paint)
+            paint.color = accent
+            canvas.drawCircle(c, c, 2.6f * density, paint)
+        }
     }
 
     private fun setActive(on: Boolean) {
         if (on == active) return
         active = on
-        held.clear(); stickX = 0f; stickY = 0f
-        if (Build.VERSION.SDK_INT >= 34) runCatching {
-            // Los ejes del mando se capturan solo con el puntero activo; apagado, van al juego.
-            serviceInfo = serviceInfo.apply { motionEventSources = if (on) InputDevice.SOURCE_JOYSTICK else 0 }
-        }
+        held.clear(); stickX = 0f; stickY = 0f; scrollY = 0f
         if (on) show() else hide()
         Toast.makeText(this, if (on) "Puntero activado · START para salir" else "Puntero desactivado", Toast.LENGTH_SHORT).show()
     }
@@ -120,29 +164,21 @@ class PointerService : AccessibilityService() {
         else @Suppress("DEPRECATION") wm.defaultDisplay.getRealSize(size)
         screenW = size.x; screenH = size.y
         x = screenW / 2f; y = screenH / 2f
-        sizePx = (resources.displayMetrics.density * 34).toInt()
+        density = resources.displayMetrics.density
+        sizePx = (density * 64).toInt()
+        ringX = 0f; ringY = 0f; ringVx = 0f; ringVy = 0f
         val accent = if (Env.ready) Env.cfg.value.look.accent.toInt() else 0xFFFF6A2B.toInt()
-        val view = object : View(this) {
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            override fun onDraw(canvas: Canvas) {
-                val c = width / 2f
-                paint.style = Paint.Style.STROKE; paint.strokeWidth = width * 0.12f; paint.color = 0xCC000000.toInt()
-                canvas.drawCircle(c, c, c * 0.72f, paint)
-                paint.strokeWidth = width * 0.07f; paint.color = accent
-                canvas.drawCircle(c, c, c * 0.72f, paint)
-                paint.style = Paint.Style.FILL
-                canvas.drawCircle(c, c, c * 0.16f, paint)
-            }
-        }
+        val view = CursorView(this, accent)
+        // Sin FLAG_NOT_FOCUSABLE: la ventana recibe teclas y ejes. Sigue sin recibir toques, que pasan a la app.
         val lp = WindowManager.LayoutParams(
             sizePx, sizePx, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.START }
         params = lp; cursor = view
         place()
-        runCatching { wm.addView(view, lp) }
+        runCatching { wm.addView(view, lp); view.requestFocus() }
     }
 
     private fun hide() {
@@ -157,10 +193,14 @@ class PointerService : AccessibilityService() {
         cursor?.takeIf { it.isAttachedToWindow }?.let { runCatching { wm.updateViewLayout(it, lp) } }
     }
 
+    /**
+     * Un fotograma de movimiento. Solo corre mientras el puntero se mueve o el anillo
+     * todavía rebota; quieto no consume nada.
+     */
     private val frame = object : Choreographer.FrameCallback {
         override fun doFrame(now: Long) {
             if (!looping || !active) { looping = false; return }
-            val dt = ((now - lastFrame) / 1e9f).coerceIn(0f, 0.05f)
+            val dt = ((now - lastFrame) / 1e9f).coerceIn(0.001f, 0.05f)
             lastFrame = now
             var dx = stickX; var dy = stickY
             if (hypot(dx, dy) < 0.18f) { dx = 0f; dy = 0f }
@@ -168,12 +208,37 @@ class PointerService : AccessibilityService() {
             if (KeyEvent.KEYCODE_DPAD_RIGHT in held) dx += 0.8f
             if (KeyEvent.KEYCODE_DPAD_UP in held) dy -= 0.8f
             if (KeyEvent.KEYCODE_DPAD_DOWN in held) dy += 0.8f
-            if (dx == 0f && dy == 0f) { looping = false; return }
-            // Curva cuadrática: fino cerca del centro, rápido a fondo.
-            val speed = screenW * 0.9f * hypot(dx, dy).coerceAtMost(1.2f)
-            x = (x + dx * speed * dt).coerceIn(0f, screenW - 1f)
-            y = (y + dy * speed * dt).coerceIn(0f, screenH - 1f)
-            place()
+            val moving = dx != 0f || dy != 0f
+            if (moving) {
+                // Curva cuadrática: fino cerca del centro, rápido a fondo.
+                val speed = screenW * 0.9f * hypot(dx, dy).coerceAtMost(1.2f)
+                val nx = (x + dx * speed * dt).coerceIn(0f, screenW - 1f)
+                val ny = (y + dy * speed * dt).coerceIn(0f, screenH - 1f)
+                // El anillo se queda atrás lo que avanza el punto y el muelle lo trae de vuelta.
+                ringX -= nx - x; ringY -= ny - y
+                x = nx; y = ny
+                place()
+            }
+            ringVx += (-STIFFNESS * ringX - DAMPING * ringVx) * dt
+            ringVy += (-STIFFNESS * ringY - DAMPING * ringVy) * dt
+            ringX += ringVx * dt; ringY += ringVy * dt
+            val limit = sizePx / 2f - 12f * density
+            val length = hypot(ringX, ringY)
+            if (length > limit) { ringX *= limit / length; ringY *= limit / length }
+            cursor?.invalidate()
+
+            val scrolling = abs(scrollY) > 0.6f
+            if (scrolling && SystemClock.uptimeMillis() - lastSwipe > 280) {
+                lastSwipe = SystemClock.uptimeMillis()
+                swipe(if (scrollY < 0) +1 else -1)
+            }
+            val settled = hypot(ringX, ringY) < 0.4f && hypot(ringVx, ringVy) < 6f
+            if (!moving && !scrolling && settled) {
+                ringX = 0f; ringY = 0f; ringVx = 0f; ringVy = 0f
+                cursor?.invalidate()
+                looping = false
+                return
+            }
             Choreographer.getInstance().postFrameCallback(this)
         }
     }

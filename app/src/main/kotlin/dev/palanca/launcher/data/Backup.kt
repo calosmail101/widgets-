@@ -23,7 +23,7 @@ object Backup {
 
     fun export(themeOnly: Boolean) {
         val name = if (themeOnly) "tema-palanca.zip" else "copia-palanca.zip"
-        Env.host?.createDocument(name) { uri ->
+        Env.host?.createDocument(name, "application/zip") { uri ->
             uri ?: return@createDocument
             Env.scope.launch {
                 val ok = withContext(Dispatchers.IO) { runCatching { write(uri, themeOnly) }.isSuccess }

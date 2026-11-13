@@ -1,6 +1,6 @@
 package dev.palanca.launcher.ui
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -33,6 +35,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -81,6 +84,9 @@ val Mono = FontFamily(Font(R.font.space_mono, FontWeight.Normal), Font(R.font.sp
 val LocalAccent = compositionLocalOf { Color(0xFFFF6A2B) }
 val LocalCfg = compositionLocalOf { Config() }
 
+/** Sube cuando cambian las apps instaladas: invalida los iconos sin que cada uno observe el flujo. */
+val LocalIconGen = compositionLocalOf { 0 }
+
 /** Esquina superior derecha cortada: el gesto que se repite en paneles, etiquetas y botones. */
 fun chamfer(cut: Dp = 14.dp): Shape = CutCornerShape(topStart = 0.dp, topEnd = cut, bottomEnd = 0.dp, bottomStart = 0.dp)
 
@@ -124,11 +130,15 @@ fun Label(text: String, color: Color = P.Dim, modifier: Modifier = Modifier, siz
     T(text.uppercase(), size, color, mono = true, spacing = 1.4f, modifier = modifier)
 
 /** Corchetes de foco: cuatro esquinas que se cierran sobre el elemento seleccionado. */
-fun Modifier.brackets(on: Boolean, color: Color, gap: Dp = 7.dp, len: Dp = 14.dp, stroke: Dp = 3.dp): Modifier = composed {
-    val t by animateFloatAsState(if (on) 1f else 0f, tween(130), label = "brackets")
-    drawWithContent {
-        drawContent()
-        if (t > 0.01f) {
+fun Modifier.brackets(on: Boolean, color: Color, gap: Dp = 7.dp, len: Dp = 14.dp, stroke: Dp = 3.dp): Modifier {
+    // Sin foco no hay nada que animar ni que dibujar: cero coste para el resto de la rejilla.
+    if (!on) return this
+    return composed {
+        val anim = remember { Animatable(0f) }
+        LaunchedEffect(Unit) { anim.animateTo(1f, tween(110)) }
+        drawWithContent {
+            drawContent()
+            val t = anim.value
             val g = gap.toPx() + (1f - t) * 12.dp.toPx()
             val l = len.toPx(); val w = stroke.toPx()
             val c = color.copy(alpha = t)
@@ -140,6 +150,16 @@ fun Modifier.brackets(on: Boolean, color: Color, gap: Dp = 7.dp, len: Dp = 14.dp
             line(x0, y1, x0 + l, y1); line(x0, y1, x0, y1 - l)
             line(x1, y1, x1 - l, y1); line(x1, y1, x1, y1 - l)
         }
+    }
+}
+
+/** Crece al recibir el foco; al perderlo vuelve a su tamaño al instante. */
+fun Modifier.focusScale(on: Boolean, to: Float = 1.12f): Modifier {
+    if (!on) return this
+    return composed {
+        val anim = remember { Animatable(1f) }
+        LaunchedEffect(Unit) { anim.animateTo(to, tween(110)) }
+        graphicsLayer { scaleX = anim.value; scaleY = anim.value }
     }
 }
 

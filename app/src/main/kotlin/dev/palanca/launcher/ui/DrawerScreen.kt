@@ -48,6 +48,8 @@ fun drawerItems(cfg: Config, apps: List<AppEntry>, tab: Int): List<AppEntry> = w
     else -> apps.filter { it.key in cfg.hidden }
 }
 
+fun drawerIconSize(cols: Int) = if (cols <= 7) 84.dp else if (cols == 8) 76.dp else 68.dp
+
 /** Mueve la selección por una rejilla de [cols] columnas y [count] elementos. */
 fun gridMove(sel: Int, count: Int, cols: Int, btn: Btn, rows: Int = 1): Int {
     if (count == 0) return 0
@@ -86,7 +88,7 @@ class DrawerScreen : Screen {
             Btn.UP, Btn.DOWN, Btn.LEFT, Btn.RIGHT -> sel = gridMove(sel, items.size, cols, e.btn)
             Btn.RS_UP -> sel = gridMove(sel, items.size, cols, Btn.UP, 3)
             Btn.RS_DOWN -> sel = gridMove(sel, items.size, cols, Btn.DOWN, 3)
-            Btn.A -> if (app != null) { if (e.long) Env.nav.push(appMenu(app)) else Actions.launch(app) }
+            Btn.A -> if (app != null) Actions.launch(app)
             Btn.X -> if (app != null && !e.long) Env.nav.push(appMenu(app))
             Btn.SELECT -> if (e.long) return false else if (app != null) togglePin(app)
             Btn.Y -> if (!e.long) Env.nav.push(KeyboardScreen.search())
@@ -104,11 +106,19 @@ class DrawerScreen : Screen {
         val apps by Env.apps.apps.collectAsState()
         val tabs = drawerTabs(cfg)
         val current = tab.coerceIn(0, tabs.lastIndex)
-        val items = remember(cfg.hidden, cfg.categories, apps, current) { drawerItems(cfg, apps, current) }
+        // Todas las pestañas se filtran una sola vez; cambiar de pestaña solo elige otra lista.
+        val lists = remember(cfg.hidden, cfg.categories, apps, tabs.size) { tabs.indices.map { drawerItems(cfg, apps, it) } }
+        val items = lists[current]
         val cols = cfg.look.drawerCols
-        val iconSize = if (cols <= 7) 84.dp else if (cols == 8) 76.dp else 68.dp
+        val iconSize = drawerIconSize(cols)
         val grid = rememberLazyGridState()
-        LaunchedEffect(sel, current) { if (items.isNotEmpty()) grid.animateScrollToItem((sel - cols).coerceAtLeast(0)) }
+        var shownTab by remember { mutableIntStateOf(current) }
+        LaunchedEffect(sel, current) {
+            if (items.isEmpty()) return@LaunchedEffect
+            val target = (sel - cols).coerceAtLeast(0)
+            // Al cambiar de pestaña se salta sin animación: pasar rápido por varias no encola desplazamientos.
+            if (shownTab != current) { shownTab = current; grid.scrollToItem(target) } else grid.animateScrollToItem(target)
+        }
 
         Column(Modifier.fillMaxSize().background(P.Bg).padding(start = 56.dp, end = 56.dp, top = 30.dp, bottom = 24.dp)) {
             Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -139,7 +149,7 @@ class DrawerScreen : Screen {
                         contentPadding = PaddingValues(top = 30.dp, bottom = 40.dp),
                         verticalArrangement = Arrangement.spacedBy(52.dp),
                     ) {
-                        itemsIndexed(items, key = { _, a -> a.key }) { i, app ->
+                        itemsIndexed(items, key = { _, a -> a.key }, contentType = { _, _ -> "app" }) { i, app ->
                             Box(contentAlignment = Alignment.Center) {
                                 AppTile(
                                     app, iconSize, i == sel,

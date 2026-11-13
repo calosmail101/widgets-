@@ -1,8 +1,6 @@
 package dev.palanca.launcher.ui
 
 import android.appwidget.AppWidgetHostView
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -33,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -66,7 +63,6 @@ fun AppTile(
     onTap: () -> Unit = {}, onLong: () -> Unit = {},
 ) {
     val cfg = LocalCfg.current
-    val scale by animateFloatAsState(if (selected) 1.12f else 1f, tween(120), label = "tile")
     val tapNow by rememberUpdatedState(onTap)
     val longNow by rememberUpdatedState(onLong)
     Column(
@@ -75,10 +71,7 @@ fun AppTile(
         },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
-                .brackets(selected, LocalAccent.current)
-        ) { AppIcon(app, size) }
+        Box(Modifier.focusScale(selected).brackets(selected, LocalAccent.current)) { AppIcon(app, size) }
         if (cfg.look.labels) {
             Spacer(Modifier.height(16.dp))
             T(
@@ -142,7 +135,6 @@ class HomeScreen : Screen {
             Btn.UP -> if (zone == 0 && cfg.look.cardContinue && Actions.lastApp() != null) zone = 1
             Btn.DOWN -> if (zone == 1) zone = 0 else Env.nav.push(DrawerScreen())
             Btn.A -> when {
-                e.long -> if (zone == 0 && app != null) Env.nav.push(appMenu(app))
                 zone == 1 -> Actions.lastApp()?.let(Actions::launch)
                 app != null -> Actions.launch(app)
                 else -> Env.nav.push(DrawerScreen())

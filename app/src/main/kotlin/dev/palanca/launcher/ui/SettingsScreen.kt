@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.Backup
 import dev.palanca.launcher.data.Config
+import dev.palanca.launcher.data.Diagnostics
 import dev.palanca.launcher.icons.ICON_SHAPES
 import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
@@ -132,6 +133,7 @@ private fun sections(): List<Section> = listOf(
             Act("Usar Palanca como pantalla de inicio", { "elegir" }) { Actions.open(Settings.ACTION_HOME_SETTINGS) },
             Act("Ajustes de Android", { "abrir" }) { Actions.open(Settings.ACTION_SETTINGS) },
             Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
+            Act("Exportar diagnóstico del dispositivo", { "guardar .txt" }) { Diagnostics.export() },
         ),
     ),
 )

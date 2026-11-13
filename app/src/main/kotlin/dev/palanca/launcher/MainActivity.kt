@@ -46,7 +46,8 @@ class MainActivity : ComponentActivity(), HostBridge {
     private var onCreated: ((Uri?) -> Unit)? = null
     private var onOpened: ((Uri?) -> Unit)? = null
     private val imagePicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { onImage?.invoke(it); onImage = null }
-    private val creator = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { onCreated?.invoke(it); onCreated = null }
+    private val zipCreator = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { onCreated?.invoke(it); onCreated = null }
+    private val textCreator = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { onCreated?.invoke(it); onCreated = null }
     private val opener = registerForActivityResult(ActivityResultContracts.OpenDocument()) { onOpened?.invoke(it); onOpened = null }
     private var pendingWidget: Pair<Int, AppWidgetProviderInfo>? = null
 
@@ -172,9 +173,9 @@ class MainActivity : ComponentActivity(), HostBridge {
             .onFailure { Actions.toast("No hay ningún selector de imágenes disponible") }
     }
 
-    override fun createDocument(name: String, onResult: (Uri?) -> Unit) {
+    override fun createDocument(name: String, mime: String, onResult: (Uri?) -> Unit) {
         onCreated = onResult
-        runCatching { creator.launch(name) }.onFailure { Actions.toast("No hay ningún gestor de archivos disponible") }
+        runCatching { (if (mime == "text/plain") textCreator else zipCreator).launch(name) }.onFailure { Actions.toast("No hay ningún gestor de archivos disponible") }
     }
 
     override fun openDocument(onResult: (Uri?) -> Unit) {

@@ -31,7 +31,7 @@ Las actualizaciones se instalan encima y conservan tu configuración.
 |---|---|---|
 | Cruceta / stick izquierdo | Moverse | Moverse |
 | A | Abrir | Abrir |
-| X (o mantener A) | Opciones de la app | Opciones de la app |
+| X | Opciones de la app | Opciones de la app |
 | Y | Buscar | Buscar |
 | B | — | Volver |
 | L1 / R1 | Cambiar de página (Inicio / Widgets) | Cambiar de categoría |
@@ -49,13 +49,13 @@ Si A y B te salen cruzados, activa *Personalizar › Mandos › Diseño Nintendo
 
 Actívalo en *Personalizar › Mandos › Puntero con mando* (abre los ajustes de accesibilidad de Android).
 Después, en cualquier app: **mantén L3 + R3** para encender o apagar el puntero.
-Con el puntero encendido: cruceta o stick = mover · A = tocar · X = toque largo · B = atrás ·
-L1/R1 = desplazar · START = salir. Apagado no intercepta nada, así que los juegos reciben el mando intacto.
+Con el puntero encendido: stick izquierdo o cruceta = mover · A = tocar · X = toque largo · B = atrás ·
+stick derecho o L1/R1 = desplazar · START = salir. Apagado no intercepta nada, así que los juegos reciben el mando intacto.
+Mientras está encendido, la app de debajo deja de recibir el mando (lo recibe el puntero).
 El servicio también es el que permite abrir *Apps recientes* desde un atajo.
 
 ## Límites conocidos
 
-- En Android 13 o anterior el puntero solo puede leer **teclas**: se mueve con la cruceta si esta llega como teclas, no con el stick. En Android 14+ usa también los sticks.
 - Android no deja a las apps encender o apagar Wi‑Fi y Bluetooth: el panel rápido abre el panel del sistema.
 - Cambiar el brillo necesita el permiso «Modificar ajustes del sistema»; el panel lo pide la primera vez.
 - El contenido de los widgets responde al toque (o al puntero), no al foco del mando.

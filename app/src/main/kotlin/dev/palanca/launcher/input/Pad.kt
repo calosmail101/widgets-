@@ -25,8 +25,11 @@ interface Scheduler {
  *
  * No depende del sistema de foco de Android: la cruceta puede llegar como teclas o como
  * eje HAT, y el stick como eje X/Y; todo acaba en las mismas cuatro direcciones con
- * repetición propia. Los botones se emiten al soltar (pulsación corta) o al mantenerlos
- * [LONG_MS] (pulsación larga), nunca ambos.
+ * repetición propia.
+ *
+ * Los botones se emiten en el instante de pulsarlos, para que la interfaz responda sin
+ * esperar a que se suelten. Solo START y SELECT, que tienen atajos de "mantener", esperan:
+ * emiten al soltar (pulsación corta) o al mantenerlos [LONG_MS] (pulsación larga), nunca ambos.
  */
 class GamepadInput(
     private val scheduler: Scheduler,
@@ -147,6 +150,11 @@ class GamepadInput(
     }
 
     private fun press(btn: Btn) {
+        if (btn !in HOLDABLE) {
+            held[btn] = NO_TASK
+            emit(PadEvent(btn))
+            return
+        }
         val task = Runnable {
             longFired += btn
             emit(PadEvent(btn, long = true))
@@ -157,6 +165,7 @@ class GamepadInput(
 
     private fun release(btn: Btn) {
         val task = held.remove(btn) ?: return
+        if (task === NO_TASK) return
         scheduler.cancel(task)
         if (!longFired.remove(btn)) emit(PadEvent(btn))
     }
@@ -180,6 +189,9 @@ class GamepadInput(
     }
 
     companion object {
+        /** Botones con atajo de pulsación larga. */
+        val HOLDABLE = setOf(Btn.START, Btn.SELECT)
+        private val NO_TASK = Runnable { }
         const val LONG_MS = 450L
         const val FIRST_REPEAT_MS = 340L
         const val REPEAT_MS = 110L

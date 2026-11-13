@@ -14,7 +14,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import dev.palanca.launcher.Env
+import androidx.compose.ui.unit.dp
 import dev.palanca.launcher.data.DEFAULT_PINS
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Alto de la pantalla en unidades de diseño. */
 const val DESIGN_HEIGHT = 720f
@@ -23,6 +26,7 @@ const val DESIGN_HEIGHT = 720f
 fun PalancaRoot() {
     val cfg by Env.cfg.flow.collectAsState()
     val apps by Env.apps.apps.collectAsState()
+    val iconGen by Env.apps.generation.collectAsState()
 
     // Primera vez: fija unas cuantas apps conocidas para que Inicio no salga vacío.
     LaunchedEffect(apps.isNotEmpty()) {
@@ -39,7 +43,21 @@ fun PalancaRoot() {
             LocalDensity provides density,
             LocalCfg provides cfg,
             LocalAccent provides Color(cfg.look.accent),
+            LocalIconGen provides iconGen,
         ) {
+            // Dibuja de antemano los iconos del cajón y de Inicio: al abrir el cajón ya están todos.
+            val look = cfg.look
+            val sizes = listOf(drawerIconSize(look.drawerCols), look.dockSize.dp)
+            LaunchedEffect(apps, iconGen, look.iconShape, look.iconPack, look.iconScale, look.drawerCols, look.dockSize) {
+                if (Env.syncIcons) return@LaunchedEffect
+                val current = Env.cfg.value
+                withContext(Dispatchers.Default) {
+                    for (app in apps) for (size in sizes) {
+                        val px = with(density) { (size * iconScale(current, app)).roundToPx() }
+                        runCatching { Env.icons.render(Env.icons.keyFor(app, current, px, iconGen), app, current, px) }
+                    }
+                }
+            }
             val stack = Env.nav.stack
             val base = stack.indexOfLast { !it.overlay }.coerceAtLeast(0)
             for (i in base until stack.size) {

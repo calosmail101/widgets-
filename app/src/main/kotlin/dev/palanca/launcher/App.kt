@@ -22,7 +22,7 @@ import java.io.File
 interface HostBridge {
     val activity: Activity
     fun pickImage(onResult: (Uri?) -> Unit)
-    fun createDocument(name: String, onResult: (Uri?) -> Unit)
+    fun createDocument(name: String, mime: String, onResult: (Uri?) -> Unit)
     fun openDocument(onResult: (Uri?) -> Unit)
     fun addWidget(provider: android.appwidget.AppWidgetProviderInfo)
 }
