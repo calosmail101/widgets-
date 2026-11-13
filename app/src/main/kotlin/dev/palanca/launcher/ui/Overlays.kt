@@ -37,6 +37,10 @@ import dev.palanca.launcher.system.DeviceModes
 import dev.palanca.launcher.system.Privileged
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.alpha
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.fold
@@ -153,74 +157,95 @@ class KeyboardScreen private constructor(
 }
 
 /**
- * Panel rápido: brillo, volumen, modos de la consola y accesos del sistema en una ventana.
- * Los modos de rendimiento y ventilador solo aparecen en consolas que los tienen.
+ * Panel rápido en dos ventanas: a la izquierda, sistema (brillo, volumen, accesos); a la derecha,
+ * rendimiento de la consola (modo, ventilador, límite de CPU o ClusterTune).
+ * La ventana de rendimiento solo aparece en consolas que exponen esos ajustes.
  */
 class QuickPanel : Screen {
     override val overlay get() = true
+    private var side by mutableIntStateOf(0)
     private var sel by mutableIntStateOf(0)
     private var brightness by mutableIntStateOf(Actions.brightness())
     private var volume by mutableIntStateOf(Actions.volume())
     private var performance by mutableIntStateOf(DeviceModes.performance())
     private var fan by mutableIntStateOf(DeviceModes.fan())
+    private var fanSpeed by mutableIntStateOf(DeviceModes.fanSpeed())
+    private var cpu by mutableIntStateOf(DeviceModes.cpuLimit())
     private val clusterTune = Env.apps.apps.value.firstOrNull { it.pkg == "com.aure.clustertune" }
+    private val jobs = HashMap<String, Job>()
 
-    private fun rows(): List<String> = buildList {
-        add("brillo"); add("volumen")
+    private val system = listOf("brillo", "volumen", "wifi", "bluetooth", "notificaciones", "ajustes")
+    private fun console(): List<String> = buildList {
         if (performance >= 0) add("rendimiento")
         if (fan >= 0) add("ventilador")
-        add("wifi"); add("bluetooth"); add("notificaciones")
-        if (clusterTune != null) add("clustertune")
-        add("ajustes")
+        if (fan == 6) add("velocidad")
+        if (clusterTune != null) add("clustertune") else if (DeviceModes.cpuLimitsSupported()) add("cpu")
     }
+    private fun rows() = if (side == 0) system else console()
 
-    /** Aplica un modo y comprueba medio segundo después que la consola lo aceptó. */
-    private fun setMode(apply: () -> Boolean, read: () -> Int, wanted: Int, store: (Int) -> Unit) {
-        if (!Privileged.available()) { Actions.toast("Esta consola no expone el servicio para cambiar modos"); return }
+    /**
+     * Cambia un ajuste de la consola. Espera a que se deje de pulsar (solo se envía el último valor)
+     * y luego comprueba hasta 4 segundos que la consola lo aplicó: el comando tarda en arrancar.
+     */
+    private fun change(key: String, wanted: Int, store: (Int) -> Unit, apply: (Int) -> Boolean, read: () -> Int) {
         store(wanted)
-        apply()
-        Env.scope.launch {
-            delay(500)
-            val now = read()
-            store(now)
-            if (now != wanted) Actions.toast("La consola no aceptó el cambio")
+        jobs[key]?.cancel()
+        jobs[key] = Env.scope.launch {
+            delay(300)
+            if (!withContext(Dispatchers.IO) { apply(wanted) }) {
+                store(read()); Actions.toast("Esta consola no permite cambiar ese ajuste"); return@launch
+            }
+            repeat(16) { delay(250); if (read() == wanted) return@launch }
+            store(read()); Actions.toast("La consola no aceptó el cambio")
         }
     }
 
     private fun adjust(delta: Int) {
         val dir = if (delta > 0) 1 else -1
+        fun <T> next(options: List<Pair<Int, T>>, current: Int): Int {
+            val i = options.indexOfFirst { it.first == current }
+            return options[(if (i < 0) 0 else (i + dir).coerceIn(0, options.lastIndex))].first
+        }
         when (rows().getOrNull(sel)) {
             "brillo" -> if (Actions.canWriteSettings()) { brightness = (brightness + delta).coerceIn(1, 100); Actions.setBrightness(brightness) }
             "volumen" -> { Actions.volumeStep(delta); volume = Actions.volume() }
-            "rendimiento" -> setMode({ DeviceModes.setPerformance((performance)) }, DeviceModes::performance, (performance + dir).coerceIn(0, 2)) { performance = it }
-            "ventilador" -> setMode({ DeviceModes.setFan(fan) }, DeviceModes::fan, (fan + dir).coerceIn(0, 6)) { fan = it }
+            "rendimiento" -> change("perf", next(DeviceModes.PERFORMANCE, performance), { performance = it }, DeviceModes::setPerformance, DeviceModes::performance)
+            "ventilador" -> change("fan", next(DeviceModes.FAN, fan), { fan = it }, DeviceModes::setFan, DeviceModes::fan)
+            "velocidad" -> change("speed", (fanSpeed + dir * 10).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
+            "cpu" -> change("cpu", (cpu.coerceAtLeast(0) + dir).coerceIn(0, DeviceModes.CPU_LIMITS.lastIndex), { cpu = it }, DeviceModes::setCpuLimit, DeviceModes::cpuLimit)
         }
     }
 
     private fun activate(row: String) {
         when (row) {
             "brillo" -> if (!Actions.canWriteSettings()) Actions.askWriteSettings()
-            "rendimiento", "ventilador" -> adjust(+5)
+            "rendimiento", "ventilador", "velocidad", "cpu" -> adjust(+5)
             "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
             "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
             "notificaciones" -> { Env.nav.pop(); Actions.run(dev.palanca.launcher.system.ActionId.NOTIFICATIONS) }
-            "clustertune" -> { Env.nav.pop(); clusterTune?.let(Actions::launch) }
+            "clustertune" -> { Env.nav.pop(); clusterTune?.let { Actions.launch(it) } }
             "ajustes" -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
         }
     }
 
+    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad", "cpu")
+    private fun switchSide(to: Int) { if (to == 0 || console().isNotEmpty()) { side = to; sel = 0 } }
+
     override fun onPad(e: PadEvent): Boolean {
         if (e.long) return true
         val rows = rows()
-        sel = sel.coerceIn(0, rows.lastIndex)
+        sel = sel.coerceIn(0, (rows.size - 1).coerceAtLeast(0))
+        val row = rows.getOrNull(sel)
         when (e.btn) {
             Btn.UP -> sel = (sel + rows.size - 1) % rows.size
             Btn.DOWN -> sel = (sel + 1) % rows.size
-            Btn.LEFT -> adjust(-5)
-            Btn.RIGHT -> adjust(+5)
+            Btn.LEFT -> if (adjustable(row)) adjust(-5) else switchSide(0)
+            Btn.RIGHT -> if (adjustable(row)) adjust(+5) else switchSide(1)
+            Btn.L1 -> switchSide(0)
+            Btn.R1 -> switchSide(1)
             Btn.RS_LEFT -> adjust(-15)
             Btn.RS_RIGHT -> adjust(+15)
-            Btn.A -> activate(rows[sel])
+            Btn.A -> row?.let(::activate)
             Btn.B, Btn.SELECT, Btn.L2 -> Env.nav.pop()
             else -> Unit
         }
@@ -229,38 +254,52 @@ class QuickPanel : Screen {
 
     @Composable
     override fun Content() {
-        val accent = LocalAccent.current
         val canWrite = remember(sel) { Actions.canWriteSettings() }
-        val rows = rows()
-        val current = sel.coerceIn(0, rows.lastIndex)
-        val state = rememberLazyListState()
-        LaunchedEffect(current) { state.animateScrollToItem((current - 3).coerceAtLeast(0)) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).tap { Env.nav.pop() }) {
-            Column(
-                Modifier.align(Alignment.Center).width(600.dp).heightIn(max = 630.dp).enter(18.dp, 0.94f, 200)
-                    .background(WINDOW, RoundedCornerShape(34.dp))
-                    .tap { }.padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 20.dp),
-            ) {
-                T("Panel rápido", 26, weight = FontWeight.Medium, modifier = Modifier.padding(start = 6.dp, bottom = 12.dp))
-                LazyColumn(Modifier.weight(1f, fill = false), state = state, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    itemsIndexed(rows) { i, row ->
-                        val on = i == current
-                        val tap = Modifier.tap { sel = i; activate(row) }
-                        when (row) {
-                            "brillo" -> Slider("Brillo", if (canWrite) brightness else -1, on, tap)
-                            "volumen" -> Slider("Volumen", volume, on, tap)
-                            "rendimiento" -> ListRow("Rendimiento", DeviceModes.PERFORMANCE.firstOrNull { it.first == performance }?.second ?: "modo $performance", on, tap, arrows = true)
-                            "ventilador" -> ListRow("Ventilador", DeviceModes.fanName(fan), on, tap, arrows = true)
-                            "wifi" -> ListRow("Wi‑Fi e internet", "abrir", on, tap)
-                            "bluetooth" -> ListRow("Bluetooth", "abrir", on, tap)
-                            "notificaciones" -> ListRow("Notificaciones", "abrir", on, tap)
-                            "clustertune" -> ListRow("ClusterTune · límites de CPU y GPU", "abrir", on, tap)
-                            else -> ListRow("Ajustes de Android", "abrir", on, tap)
+        val console = console()
+        Scrim({ Env.nav.pop() }) {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.Top) {
+                    Window(Modifier.width(if (console.isEmpty()) 600.dp else 540.dp).alpha(if (side == 0) 1f else 0.6f)) {
+                        T("Panel rápido", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                        system.forEachIndexed { i, row ->
+                            val on = side == 0 && i == sel
+                            val tap = Modifier.tap { side = 0; sel = i; activate(row) }
+                            when (row) {
+                                "brillo" -> Slider("Brillo", if (canWrite) brightness else -1, on, tap)
+                                "volumen" -> Slider("Volumen", volume, on, tap)
+                                "wifi" -> ListRow("Wi‑Fi e internet", "abrir", on, tap)
+                                "bluetooth" -> ListRow("Bluetooth", "abrir", on, tap)
+                                "notificaciones" -> ListRow("Notificaciones", "abrir", on, tap)
+                                else -> ListRow("Ajustes de Android", "abrir", on, tap)
+                            }
+                            Spacer(Modifier.height(4.dp))
                         }
                     }
+                    if (console.isNotEmpty()) Window(Modifier.width(540.dp).alpha(if (side == 1) 1f else 0.6f)) {
+                        T("Rendimiento", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                        console.forEachIndexed { i, row ->
+                            val on = side == 1 && i == sel
+                            val tap = Modifier.tap { side = 1; sel = i; activate(row) }
+                            when (row) {
+                                "rendimiento" -> ListRow("Modo", DeviceModes.name(DeviceModes.PERFORMANCE, performance), on, tap, arrows = true)
+                                "ventilador" -> ListRow("Ventilador", DeviceModes.name(DeviceModes.FAN, fan), on, tap, arrows = true)
+                                "velocidad" -> Slider("Velocidad del ventilador", fanSpeed, on, tap)
+                                "cpu" -> ListRow("Límite de CPU", DeviceModes.CPU_LIMITS.getOrNull(cpu)?.first ?: "otro", on, tap, arrows = true)
+                                else -> ListRow("ClusterTune · límites de CPU y GPU", "abrir", on, tap)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        if ("cpu" in console) T(
+                            "Bajar el límite reduce calor y consumo. Vuelve a «Sin límite» si un juego va justo.",
+                            13, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp, top = 8.dp, end = 8.dp),
+                        )
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                HintBar(listOf("A" to "Abrir", "◀ ▶" to "Ajustar", "B" to "Cerrar"))
+                Spacer(Modifier.height(16.dp))
+                HintBar(
+                    listOf("A" to "Abrir", "◀ ▶" to "Ajustar") + (if (console.isEmpty()) emptyList() else listOf("L1 R1" to "Cambiar de ventana")) + listOf("B" to "Cerrar"),
+                    Modifier.width(if (console.isEmpty()) 600.dp else 1102.dp).padding(horizontal = 14.dp),
+                )
             }
         }
     }
@@ -270,7 +309,7 @@ class QuickPanel : Screen {
         val accent = LocalAccent.current
         Column(
             modifier.fillMaxWidth().background(if (selected) P.Line else Color.Transparent, chamfer(12.dp))
-                .brackets(selected, accent, gap = 2.dp, len = 10.dp, stroke = 2.5.dp).padding(horizontal = 18.dp, vertical = 14.dp),
+                .brackets(selected, accent, gap = 2.dp, stroke = 2.5.dp, radius = 16.8.dp).padding(horizontal = 18.dp, vertical = 14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 T(title, 16, if (selected) P.Ink else P.Dim, if (selected) FontWeight.Medium else FontWeight.Normal, modifier = Modifier.weight(1f))
@@ -278,6 +317,30 @@ class QuickPanel : Screen {
             }
             Spacer(Modifier.height(10.dp))
             Segments(if (value < 0) 0f else value / 100f, if (selected) accent else P.Ink, Modifier.fillMaxWidth(), count = 20)
+        }
+    }
+}
+
+/** Ventana que espera a que se pulse un botón cualquiera y devuelve su código de tecla. */
+class KeyCaptureScreen(private val title: String, private val onKey: (Int) -> Unit) : Screen {
+    override val overlay get() = true
+
+    init {
+        Env.keyCapture = { code -> Env.keyCapture = null; Env.nav.stack.remove(this); onKey(code) }
+    }
+
+    override fun onPad(e: PadEvent) = true
+
+    @Composable
+    override fun Content() {
+        Scrim({ Env.keyCapture = null; Env.nav.stack.remove(this@KeyCaptureScreen) }) {
+            Window(Modifier.align(Alignment.Center).width(620.dp)) {
+                T(title, 24, weight = FontWeight.Medium, modifier = Modifier.padding(8.dp))
+                T(
+                    "Pulsa ahora el botón que quieras usar. Si es un botón trasero (M1/M2), asígnale antes una tecla en los ajustes de la consola que no sea Home ni Atrás. Toca fuera para cancelar.",
+                    15, P.Dim, maxLines = 4, modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
+                )
+            }
         }
     }
 }

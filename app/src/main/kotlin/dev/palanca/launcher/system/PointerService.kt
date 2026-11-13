@@ -85,12 +85,18 @@ class PointerService : AccessibilityService() {
 
     private fun handleKey(event: KeyEvent): Boolean {
         val down = event.action == KeyEvent.ACTION_DOWN
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_BUTTON_THUMBL -> l3 = down
-            KeyEvent.KEYCODE_BUTTON_THUMBR -> r3 = down
+        val toggleKey = if (Env.ready) Env.cfg.value.pointerKey else 0
+        if (toggleKey != 0) {
+            // Botón propio elegido por el usuario: enciende o apaga al soltarlo y nunca llega a la app.
+            if (event.keyCode == toggleKey) { if (!down) setActive(!active); return true }
+        } else {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_BUTTON_THUMBL -> l3 = down
+                KeyEvent.KEYCODE_BUTTON_THUMBR -> r3 = down
+            }
+            if (l3 && r3 && !comboUsed) { comboUsed = true; setActive(!active); return true }
+            if (!l3 && !r3) comboUsed = false
         }
-        if (l3 && r3 && !comboUsed) { comboUsed = true; setActive(!active); return true }
-        if (!l3 && !r3) comboUsed = false
         if (!active) return false
 
         return when (event.keyCode) {
@@ -100,7 +106,10 @@ class PointerService : AccessibilityService() {
             }
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { if (!down) tap(60); true }
             KeyEvent.KEYCODE_BUTTON_X -> { if (!down) tap(650); true }
-            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { if (!down) performGlobalAction(GLOBAL_ACTION_BACK); true }
+            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> {
+                if (!down && !performGlobalAction(GLOBAL_ACTION_BACK)) Privileged.run("input keyevent 4")
+                true
+            }
             KeyEvent.KEYCODE_BUTTON_L1 -> { if (!down) swipe(+1); true }
             KeyEvent.KEYCODE_BUTTON_R1 -> { if (!down) swipe(-1); true }
             KeyEvent.KEYCODE_BUTTON_START -> { if (!down) setActive(false); true }
@@ -251,11 +260,26 @@ class PointerService : AccessibilityService() {
         Choreographer.getInstance().postFrameCallback(frame)
     }
 
+    /**
+     * Toca en la posición del puntero. Primero con un gesto de accesibilidad; si el sistema lo
+     * rechaza o lo cancela, con el comando de toque del servicio privilegiado de la consola.
+     */
     private fun tap(ms: Long) {
-        val path = Path().apply { moveTo(x, y) }
-        runCatching {
-            dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, ms)).build(), null, null)
+        val px = x.toInt(); val py = y.toInt()
+        fun fallback() {
+            Privileged.run(if (ms > 300) "input swipe $px $py $px $py $ms" else "input tap $px $py")
         }
+        val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
+        val sent = runCatching {
+            dispatchGesture(
+                GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, ms)).build(),
+                object : GestureResultCallback() {
+                    override fun onCancelled(gestureDescription: GestureDescription?) = fallback()
+                },
+                null,
+            )
+        }.getOrDefault(false)
+        if (!sent) fallback()
     }
 
     private fun swipe(direction: Int) {

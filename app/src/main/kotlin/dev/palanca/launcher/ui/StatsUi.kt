@@ -81,7 +81,7 @@ private fun StatTile(
     val big = size == "grande"; val mini = size == "mini"
     val valueSize = if (big) 28 else if (mini) 16 else 21
     val ring = if (big) 56.dp else if (mini) 24.dp else 34.dp
-    Panel(modifier.brackets(selected, accent, gap = if (big) 7.dp else 4.dp, len = if (big) 14.dp else 9.dp), cut = if (big) 16.dp else 10.dp) {
+    Panel(modifier.brackets(selected, accent, gap = 3.dp, radius = if (big) 22.4.dp else 14.dp), cut = if (big) 16.dp else 10.dp) {
         Row(
             Modifier.fillMaxWidth().padding(
                 horizontal = if (big) 18.dp else if (mini) 9.dp else 12.dp,

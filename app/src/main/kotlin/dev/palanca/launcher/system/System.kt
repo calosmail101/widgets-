@@ -87,9 +87,17 @@ object Actions {
 
     // ---- Lanzar apps y medir sesiones --------------------------------------------------
 
-    fun launch(app: AppEntry) {
+    /** Abre [app]. [origin] es el punto de la pantalla (fracciones 0..1) desde el que crece la ventana. */
+    fun launch(app: AppEntry, origin: Pair<Float, Float> = 0.5f to 0.5f) {
         val now = System.currentTimeMillis()
-        if (!Env.apps.launch(app)) { toast("No se pudo abrir ${app.label}"); return }
+        val options = runCatching {
+            val view = Env.host!!.activity.window.decorView
+            val side = view.height / 6
+            android.app.ActivityOptions.makeScaleUpAnimation(
+                view, (view.width * origin.first).toInt() - side / 2, (view.height * origin.second).toInt() - side / 2, side, side,
+            ).toBundle()
+        }.getOrNull()
+        if (!Env.apps.launch(app, options)) { toast("No se pudo abrir ${app.label}"); return }
         Env.stats.update { s ->
             val u = s.usage[app.key] ?: Usage()
             s.copy(usage = s.usage + (app.key to u.copy(last = now, count = u.count + 1)), pendingKey = app.key, pendingAt = now)
@@ -157,11 +165,11 @@ object Actions {
     fun pointerEnabled() = PointerService.instance != null
 }
 
-val SOUND_PACKS = listOf("suave" to "Suave (campanas)", "arcade" to "Arcade (8 bits)", "mecanico" to "Mecánico (clics)")
+val SOUND_PACKS = listOf("toque" to "Toque (suave y grave)", "burbuja" to "Burbuja", "cristal" to "Cristal", "arcade" to "Arcade (8 bits)")
 
 /**
- * Sonidos de la interfaz, sintetizados al vuelo (sin archivos) en tres paquetes, y vibración corta.
- * Cada movimiento alterna entre varias notas para que no suene repetitivo.
+ * Sonidos de la interfaz, sintetizados al vuelo (sin archivos), y vibración corta.
+ * Moverse suena siempre igual; solo abrir (A) y volver (B) tienen su propio sonido, con el mismo timbre.
  */
 class Feedback(private val ctx: Context) {
     private val vibrator = ctx.getSystemService(Vibrator::class.java)
@@ -207,27 +215,35 @@ class Feedback(private val ctx: Context) {
     private fun twoNotes(t: Double, at: Double, first: (Double) -> Double, second: (Double) -> Double) =
         if (t < at) first(t) else first(t) * 0.4 + second(t - at)
 
+    /** Barrido de frecuencia de [from] a [to] en [seconds]: el "pop" de una burbuja. */
+    private fun sweep(from: Double, to: Double, seconds: Double, t: Double): Double {
+        val k = (to - from) / seconds
+        return sin(2 * PI * (from * t + k * t * t / 2))
+    }
+
     private fun build(pack: String): Map<String, List<AudioTrack>> {
-        val noise = java.util.Random(7)
-        fun set(vararg clips: AudioTrack?) = clips.filterNotNull()
+        fun one(clip: AudioTrack?) = listOfNotNull(clip)
         return when (pack) {
             "arcade" -> mapOf(
-                "move" to listOf(988.0, 1109.0, 880.0).map { f -> clip(34) { t -> 0.10 * square(f, t) * exp(-30 * t) } }.let { set(*it.toTypedArray()) },
-                "select" to set(clip(150) { t -> 0.11 * twoNotes(t, 0.055, { square(988.0, it) * exp(-18 * it) }, { square(1480.0, it) * exp(-14 * it) }) }),
-                "back" to set(clip(140) { t -> 0.11 * twoNotes(t, 0.055, { square(740.0, it) * exp(-18 * it) }, { square(494.0, it) * exp(-14 * it) }) }),
+                "move" to one(clip(30) { t -> 0.09 * square(988.0, t) * exp(-34 * t) }),
+                "select" to one(clip(150) { t -> 0.10 * twoNotes(t, 0.055, { square(988.0, it) * exp(-18 * it) }, { square(1480.0, it) * exp(-14 * it) }) }),
+                "back" to one(clip(140) { t -> 0.10 * twoNotes(t, 0.055, { square(988.0, it) * exp(-18 * it) }, { square(660.0, it) * exp(-14 * it) }) }),
             )
-            "mecanico" -> mapOf(
-                "move" to listOf(170.0, 190.0, 155.0).map { f ->
-                    clip(46) { t -> 0.30 * sine(f, t) * exp(-70 * t) + (if (t < 0.006) 0.22 * (noise.nextDouble() * 2 - 1) else 0.0) }
-                }.let { set(*it.toTypedArray()) },
-                "select" to set(clip(90) { t -> 0.36 * sine(230.0, t) * exp(-45 * t) + (if (t < 0.010) 0.26 * (noise.nextDouble() * 2 - 1) else 0.0) }),
-                "back" to set(clip(90) { t -> 0.36 * sine(130.0, t) * exp(-45 * t) + (if (t < 0.008) 0.2 * (noise.nextDouble() * 2 - 1) else 0.0) }),
+            "burbuja" -> mapOf(
+                "move" to one(clip(60) { t -> 0.26 * sweep(380.0, 760.0, 0.06, t) * exp(-38 * t) }),
+                "select" to one(clip(150) { t -> 0.28 * sweep(420.0, 1250.0, 0.15, t) * exp(-16 * t) }),
+                "back" to one(clip(150) { t -> 0.28 * sweep(900.0, 320.0, 0.15, t) * exp(-16 * t) }),
             )
+            "cristal" -> mapOf(
+                "move" to one(clip(110) { t -> 0.15 * bell(1568.0, t, 46.0) }),
+                "select" to one(clip(280) { t -> 0.18 * twoNotes(t, 0.07, { bell(1568.0, it, 24.0) }, { bell(2093.0, it, 14.0) }) }),
+                "back" to one(clip(240) { t -> 0.17 * twoNotes(t, 0.07, { bell(1568.0, it, 24.0) }, { bell(1046.5, it, 16.0) }) }),
+            )
+            // "toque": un golpecito grave y corto, casi táctil.
             else -> mapOf(
-                // Tres notas de un mismo acorde: moverse suena como pasar el dedo por unas campanillas.
-                "move" to listOf(1318.5, 1568.0, 1174.7).map { f -> clip(90) { t -> 0.17 * bell(f, t, 42.0) } }.let { set(*it.toTypedArray()) },
-                "select" to set(clip(260) { t -> 0.20 * twoNotes(t, 0.07, { bell(1046.5, it, 22.0) }, { bell(1568.0, it, 14.0) }) }),
-                "back" to set(clip(220) { t -> 0.18 * twoNotes(t, 0.07, { bell(784.0, it, 22.0) }, { bell(523.3, it, 16.0) }) }),
+                "move" to one(clip(46) { t -> (0.30 * sine(430.0, t) + 0.08 * sine(860.0, t)) * exp(-62 * t) }),
+                "select" to one(clip(150) { t -> 0.30 * twoNotes(t, 0.05, { sine(430.0, it) * exp(-40 * it) }, { (sine(645.0, it) + 0.25 * sine(1290.0, it)) * exp(-22 * it) }) }),
+                "back" to one(clip(150) { t -> 0.30 * twoNotes(t, 0.05, { sine(430.0, it) * exp(-40 * it) }, { sine(287.0, it) * exp(-22 * it) }) }),
             )
         }
     }

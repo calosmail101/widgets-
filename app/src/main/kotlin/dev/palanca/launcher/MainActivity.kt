@@ -160,6 +160,10 @@ class MainActivity : ComponentActivity(), HostBridge {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val down = event.action == KeyEvent.ACTION_DOWN
+        Env.keyCapture?.let { capture ->
+            // Modo "aprender botón": cualquier tecla (salvo Atrás, que cancela) se entrega tal cual.
+            if (event.keyCode != KeyEvent.KEYCODE_BACK) { if (event.action == KeyEvent.ACTION_UP) capture(event.keyCode); return true }
+        }
         if ((down || event.action == KeyEvent.ACTION_UP) && input.onKey(event.keyCode, down, event.repeatCount)) return true
         return super.dispatchKeyEvent(event)
     }

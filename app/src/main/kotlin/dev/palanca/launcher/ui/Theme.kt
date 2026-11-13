@@ -32,6 +32,18 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asComposePath
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.TextUnit
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
@@ -173,7 +185,7 @@ class Navigator {
 fun T(
     text: String, size: Int = 16, color: Color = P.Ink, weight: FontWeight = FontWeight.Normal,
     mono: Boolean = false, modifier: Modifier = Modifier, maxLines: Int = 1, spacing: Float = 0f,
-    align: TextAlign = TextAlign.Start, outline: Float = 0f,
+    align: TextAlign = TextAlign.Start, outline: Float = 0f, tight: Boolean = false,
 ) {
     val fonts = LocalFonts.current
     BasicText(
@@ -182,6 +194,10 @@ fun T(
             color = color, fontSize = (size * fonts.scale).sp, fontFamily = if (mono) fonts.mono else fonts.ui,
             fontWeight = weight, letterSpacing = spacing.sp, textAlign = align,
             drawStyle = if (outline > 0f) Stroke(outline, join = StrokeJoin.Round) else null,
+            // "tight": sin el relleno que la fuente añade arriba y abajo, que descentra las letras sueltas.
+            platformStyle = if (tight) PlatformTextStyle(includeFontPadding = false) else null,
+            lineHeight = if (tight) (size * fonts.scale).sp else TextUnit.Unspecified,
+            lineHeightStyle = if (tight) LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both) else null,
         ),
         maxLines = maxLines, overflow = TextOverflow.Ellipsis,
     )
@@ -193,37 +209,76 @@ fun Label(text: String, color: Color = P.Dim, modifier: Modifier = Modifier, siz
     T(text.uppercase(), size, color, FontWeight.Medium, spacing = 0.9f, modifier = modifier)
 
 /**
- * Indicador de foco: un anillo redondeado con un halo tenue que se ciñe al elemento.
+ * Indicador de foco: un anillo con un halo tenue que sigue el contorno del elemento.
+ * [radius] es el radio de esquina del propio elemento; sin él se estima a partir del tamaño.
  * (Conserva el nombre histórico "brackets"; [len] ya no se usa.)
  */
 @Suppress("UNUSED_PARAMETER")
-fun Modifier.brackets(on: Boolean, color: Color, gap: Dp = 7.dp, len: Dp = 14.dp, stroke: Dp = 3.dp): Modifier {
+fun Modifier.brackets(
+    on: Boolean, color: Color, gap: Dp = 4.dp, len: Dp = 14.dp, stroke: Dp = 3.dp, radius: Dp? = null,
+): Modifier {
     // Sin foco no hay nada que animar ni que dibujar: cero coste para el resto de la rejilla.
     if (!on) return this
     return composed {
         val anim = remember { Animatable(0f) }
-        LaunchedEffect(Unit) { anim.animateTo(1f, tween(160)) }
+        LaunchedEffect(Unit) { anim.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 420f)) }
         drawWithContent {
             drawContent()
             val t = anim.value
-            val g = gap.toPx() + (1f - t) * 10.dp.toPx()
+            // Entra desde fuera y rebota un poco al ceñirse.
+            val g = gap.toPx() + (1f - t) * 14.dp.toPx()
             val w = stroke.toPx() * 0.85f
             val box = Size(size.width + 2 * g, size.height + 2 * g)
-            val radius = (minOf(size.width, size.height) * 0.30f).coerceAtMost(30.dp.toPx()) + g
-            val corner = CornerRadius(radius, radius)
-            drawRoundRect(color.copy(alpha = 0.22f * t), Offset(-g, -g), box, corner, Stroke(w * 3.2f))
-            drawRoundRect(color.copy(alpha = t), Offset(-g, -g), box, corner, Stroke(w))
+            val own = radius?.toPx()?.coerceAtMost(minOf(size.width, size.height) / 2f)
+                ?: (minOf(size.width, size.height) * 0.30f).coerceAtMost(30.dp.toPx())
+            val corner = CornerRadius(own + g, own + g)
+            val alpha = t.coerceIn(0f, 1f)
+            drawRoundRect(color.copy(alpha = 0.22f * alpha), Offset(-g, -g), box, corner, Stroke(w * 3.2f))
+            drawRoundRect(color.copy(alpha = alpha), Offset(-g, -g), box, corner, Stroke(w))
         }
     }
 }
 
-/** Entrada de ventanas y pantallas: aparecen subiendo un poco y ganando opacidad. */
-fun Modifier.enter(rise: Dp = 22.dp, fromScale: Float = 1f, millis: Int = 240): Modifier = composed {
+/** Anillo de foco para iconos: usa el mismo contorno que la máscara del icono (squircle, círculo, hexágono…). */
+fun Modifier.iconFocus(on: Boolean, shape: String, color: Color, gap: Dp = 4.dp): Modifier {
+    if (!on) return this
+    if (shape == "ninguna") return brackets(true, color, gap)
+    return composed {
+        val anim = remember { Animatable(0f) }
+        LaunchedEffect(Unit) { anim.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 420f)) }
+        drawWithCache {
+            val outline = dev.palanca.launcher.icons.shapePath(shape, size.minDimension).asComposePath()
+            onDrawWithContent {
+                drawContent()
+                val t = anim.value
+                val g = gap.toPx() + (1f - t) * 14.dp.toPx()
+                val k = (size.minDimension + 2 * g) / size.minDimension
+                val alpha = t.coerceIn(0f, 1f)
+                withTransform({ translate(-g, -g); scale(k, k, Offset.Zero) }) {
+                    drawPath(outline, color.copy(alpha = 0.22f * alpha), style = Stroke(8.dp.toPx() / k))
+                    drawPath(outline, color.copy(alpha = alpha), style = Stroke(2.6.dp.toPx() / k))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Entrada de ventanas y pantallas: suben desde [rise], crecen desde [fromScale] y se asientan
+ * con un rebote corto. [delay] permite escalonar varias piezas.
+ */
+fun Modifier.enter(rise: Dp = 60.dp, fromScale: Float = 0.94f, millis: Int = 420, delay: Int = 0): Modifier = composed {
     val anim = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { anim.animateTo(1f, tween(millis, easing = FastOutSlowInEasing)) }
+    val fade = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        if (delay > 0) kotlinx.coroutines.delay(delay.toLong())
+        launch { fade.animateTo(1f, tween(millis / 2)) }
+        // Sale rápido y frena pasándose un poco: da sensación de peso.
+        anim.animateTo(1f, tween(millis, easing = CubicBezierEasing(0.18f, 1.25f, 0.4f, 1f)))
+    }
     graphicsLayer {
         val t = anim.value
-        alpha = t
+        alpha = fade.value
         translationY = (1f - t) * rise.toPx()
         val k = fromScale + (1f - fromScale) * t
         scaleX = k; scaleY = k
@@ -235,7 +290,7 @@ fun Modifier.focusScale(on: Boolean, to: Float = 1.12f): Modifier {
     if (!on) return this
     return composed {
         val anim = remember { Animatable(1f) }
-        LaunchedEffect(Unit) { anim.animateTo(to, tween(110)) }
+        LaunchedEffect(Unit) { anim.animateTo(to, spring(dampingRatio = 0.5f, stiffness = 380f)) }
         graphicsLayer { scaleX = anim.value; scaleY = anim.value }
     }
 }
@@ -256,14 +311,56 @@ fun Segments(fraction: Float, color: Color, modifier: Modifier = Modifier, count
 @Composable
 fun Glyph(name: String, primary: Boolean = false) {
     val accent = LocalAccent.current
+    val arrow = name == "◀" || name == "▶"
     val round = name.length == 1
-    val shape = if (round) CircleShape else RoundedCornerShape(5.dp)
+    val shape = if (round) CircleShape else RoundedCornerShape(7.dp)
+    val ink = if (primary) P.OnAccent else P.Dim
     Box(
         Modifier.height(24.dp).defaultMinSize(minWidth = 24.dp)
             .then(if (primary) Modifier.background(accent, shape) else Modifier.border(1.5.dp, P.Dim, shape))
             .padding(horizontal = if (round) 0.dp else 7.dp),
         contentAlignment = Alignment.Center,
-    ) { T(name, 11, if (primary) P.OnAccent else P.Dim, FontWeight.Bold, mono = true) }
+    ) {
+        if (arrow) {
+            // Las flechas se dibujan: los caracteres ◀ ▶ nunca quedan centrados en un círculo.
+            Canvas(Modifier.size(9.dp)) {
+                val path = Path().apply {
+                    if (name == "◀") { moveTo(size.width * 0.85f, 0f); lineTo(size.width * 0.85f, size.height); lineTo(0.05f * size.width, size.height / 2) }
+                    else { moveTo(size.width * 0.15f, 0f); lineTo(size.width * 0.15f, size.height); lineTo(0.95f * size.width, size.height / 2) }
+                    close()
+                }
+                drawPath(path, ink)
+            }
+        } else T(name, 11, ink, FontWeight.Bold, mono = true, tight = true)
+    }
+}
+
+/**
+ * Ventana flotante. Con el modo cristal es translúcida y deja ver, desenfocado, lo que hay detrás
+ * (el desenfoque lo aplica Root a las pantallas de debajo); sin él es opaca.
+ */
+@Composable
+fun Window(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val glass = LocalCfg.current.look.glass
+    val shape = RoundedCornerShape(36.dp)
+    Column(
+        modifier.enter(46.dp, 0.88f, 380)
+            .background(if (glass) Color(0xFF1B1C22).copy(alpha = 0.52f) else Color(0xFF191A1F), shape)
+            .then(
+                if (glass) Modifier.border(
+                    1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.34f), Color.White.copy(alpha = 0.06f))), shape,
+                ) else Modifier
+            )
+            .tap { }.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 18.dp),
+        content = content,
+    )
+}
+
+/** Velo oscuro detrás de las ventanas; tocarlo las cierra. */
+@Composable
+fun Scrim(onDismiss: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+    val glass = LocalCfg.current.look.glass
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (glass) 0.38f else 0.62f)).tap { onDismiss() }, content = content)
 }
 
 /** Leyenda de botones al pie. La primera pareja es la acción principal. */
@@ -314,7 +411,7 @@ fun ListRow(
     Row(
         modifier.fillMaxWidth().height(height)
             .background(if (selected) P.Line else Color.Transparent, chamfer(12.dp))
-            .brackets(selected, accent, gap = 2.dp, len = 10.dp, stroke = 2.5.dp)
+            .brackets(selected, accent, gap = 2.dp, stroke = 2.5.dp, radius = 16.8.dp)
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -11,6 +11,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -77,10 +79,13 @@ fun PalancaRoot() {
                 // Inicio no se anima (ya está ahí) y las ventanas traen su propia entrada.
                 val motion = when {
                     screen is HomeScreen || screen.overlay -> Modifier
-                    screen is DrawerScreen -> Modifier.enter(70.dp, 1f, 260)
-                    else -> Modifier.enter(26.dp, 0.985f, 230)
+                    screen is DrawerScreen -> Modifier.enter(150.dp, 0.96f, 460)
+                    else -> Modifier.enter(90.dp, 0.93f, 440)
                 }
-                key(screen) { Box(Modifier.fillMaxSize().then(motion)) { screen.Content() } }
+                // Cristal: lo que queda debajo de una ventana se desenfoca (Android 12+; antes no hace nada).
+                // Se amplía un 8 % para que el borde oscuro que deja el desenfoque quede fuera de la pantalla.
+                val depth = if (cfg.look.glass && i < stack.lastIndex) Modifier.graphicsLayer { scaleX = 1.08f; scaleY = 1.08f }.blur(26.dp) else Modifier
+                key(screen) { Box(Modifier.fillMaxSize().then(motion).then(depth)) { screen.Content() } }
             }
         }
     }

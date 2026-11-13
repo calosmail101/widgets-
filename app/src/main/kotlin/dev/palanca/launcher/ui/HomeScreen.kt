@@ -69,7 +69,7 @@ fun AppTile(
 ) {
     val cfg = LocalCfg.current
     Column(modifier.width(size + 44.dp).tap(onLong, onTap), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.focusScale(selected).brackets(selected, LocalAccent.current)) { AppIcon(app, size) }
+        Box(Modifier.focusScale(selected).iconFocus(selected, iconShape(cfg, app), LocalAccent.current)) { AppIcon(app, size) }
         if (cfg.look.labels) {
             Spacer(Modifier.height(16.dp))
             T(
@@ -183,7 +183,7 @@ class HomeScreen : Screen {
                 Btn.RIGHT -> dock = (dock + 1).coerceAtMost(pins.size)
                 Btn.UP -> zone = 2
                 Btn.DOWN -> Env.nav.push(DrawerScreen())
-                Btn.A -> if (app != null) Actions.launch(app) else Env.nav.push(DrawerScreen())
+                Btn.A -> if (app != null) Actions.launch(app, 0.5f to 0.78f) else Env.nav.push(DrawerScreen())
                 Btn.X -> if (app != null) Env.nav.push(appMenu(app))
                 Btn.RS_LEFT, Btn.RS_RIGHT -> if (app != null) {
                     val to = (dock + if (e.btn == Btn.RS_LEFT) -1 else 1)
@@ -302,7 +302,7 @@ class HomeScreen : Screen {
     private fun PlayButton(cfg: Config, app: AppEntry?, selected: Boolean) {
         val accent = LocalAccent.current
         Row(
-            Modifier.height(60.dp).brackets(selected, P.Ink, gap = 5.dp).background(accent, CircleShape)
+            Modifier.height(60.dp).brackets(selected, P.Ink, gap = 4.dp, radius = 30.dp).background(accent, CircleShape)
                 .tap(onLong = { Env.nav.push(playAppPicker()) }) {
                     zone = 2
                     app?.let(Actions::launch) ?: Env.nav.push(playAppPicker())
@@ -329,7 +329,7 @@ class HomeScreen : Screen {
             if (showContinue && last != null) {
                 val usage = stats.usage[last.key]!!
                 val game = last.categoryIn(cfg).let { it == Cat.JUEGOS || it == Cat.EMULADORES }
-                Panel(Modifier.fillMaxWidth().brackets(selected == 0, accent).tap { Actions.launch(last) }) {
+                Panel(Modifier.fillMaxWidth().brackets(selected == 0, accent, radius = 22.4.dp).tap { Actions.launch(last) }) {
                     Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         AppIcon(last, 56.dp)
                         Spacer(Modifier.width(16.dp))
@@ -376,7 +376,7 @@ class HomeScreen : Screen {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
-                            Modifier.focusScale(on, 1.3f).brackets(on && active, LocalAccent.current, gap = 5.dp)
+                            Modifier.focusScale(on, 1.3f).iconFocus(on && active, iconShape(cfg, app), LocalAccent.current)
                                 .alpha(if (on) 1f else 0.62f)
                         ) { AppIcon(app, size) }
                         Spacer(Modifier.height(size * 0.15f + 14.dp))
@@ -387,7 +387,7 @@ class HomeScreen : Screen {
                     val on = selected == pins.size
                     Column(Modifier.width(slot).tap { Env.nav.push(DrawerScreen()) }, horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
-                            Modifier.size(size).focusScale(on, 1.3f).brackets(on && active, LocalAccent.current, gap = 5.dp)
+                            Modifier.size(size).focusScale(on, 1.3f).brackets(on && active, LocalAccent.current, radius = size * 0.28f)
                                 .alpha(if (on) 1f else 0.62f).border(1.5.dp, if (on) P.Ink else P.Dim, chamfer(size * 0.2f)),
                             contentAlignment = Alignment.Center,
                         ) {

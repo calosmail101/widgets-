@@ -55,7 +55,8 @@ Si A y B te salen cruzados, activa *Personalizar › Mandos › Diseño Nintendo
 ### Puntero con mando
 
 Actívalo en *Personalizar › Mandos › Puntero con mando* (abre los ajustes de accesibilidad de Android).
-Después, en cualquier app: **mantén L3 + R3** para encender o apagar el puntero.
+Después, en cualquier app: **mantén L3 + R3** para encender o apagar el puntero, o elige otro botón en
+*Personalizar › Mandos › Botón del puntero* (por ejemplo un botón trasero al que hayas asignado una tecla).
 Con el puntero encendido: stick izquierdo o cruceta = mover · A = tocar · X = toque largo · B = atrás ·
 stick derecho o L1/R1 = desplazar · START = salir. Apagado no intercepta nada, así que los juegos reciben el mando intacto.
 Mientras está encendido, la app de debajo deja de recibir el mando (lo recibe el puntero).

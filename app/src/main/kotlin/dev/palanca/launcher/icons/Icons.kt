@@ -42,6 +42,9 @@ val ICON_SHAPES = listOf(
     "chaflan" to "Chaflán", "hexagono" to "Hexágono", "ninguna" to "Sin máscara",
 )
 
+/** Color de los iconos: tal cual, teñidos con el acento sobre fondo oscuro, o en gris. */
+val ICON_TINTS = listOf("normal" to "Originales", "tintado" to "Tintados con el acento", "gris" to "Monocromo")
+
 /** Valor de [dev.palanca.launcher.data.IconOverride.pack] que fuerza el icono de fábrica. */
 const val PACK_ORIGINAL = "original"
 
@@ -86,7 +89,11 @@ class IconPacks(private val ctx: Context) {
     private val drawables = ConcurrentHashMap<String, List<String>>()
     private val resources = ConcurrentHashMap<String, Resources>()
 
-    fun list(): List<IconPack> {
+    @Volatile private var listed: List<IconPack>? = null
+
+    fun list(): List<IconPack> = listed ?: scan().also { listed = it }
+
+    private fun scan(): List<IconPack> {
         val found = LinkedHashMap<String, IconPack>()
         for (action in listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME", "com.gau.go.launcherex.theme")) {
             runCatching {
@@ -96,7 +103,9 @@ class IconPacks(private val ctx: Context) {
                 }
             }
         }
-        return found.values.sortedBy { it.name.lowercase() }
+        // Algunas apps se anuncian como paquete pero no traen iconos propios (los generan solo para
+        // ciertos launchers): elegirlas no haría nada, así que no se listan.
+        return found.values.filter { mapping(it.pkg).isNotEmpty() || allDrawables(it.pkg).isNotEmpty() }.sortedBy { it.name.lowercase() }
     }
 
     fun name(pkg: String): String = runCatching {
@@ -160,7 +169,7 @@ class IconPacks(private val ctx: Context) {
         if (id == 0) null else r.getDrawable(id)
     }.getOrNull()
 
-    fun invalidate() { mappings.clear(); drawables.clear(); resources.clear() }
+    fun invalidate() { mappings.clear(); drawables.clear(); resources.clear(); listed = null }
 }
 
 /** Dibuja iconos ya enmascarados a un bitmap y los guarda en caché. */
@@ -174,14 +183,15 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
 
     fun keyFor(app: AppEntry, cfg: Config, px: Int, generation: Int): String {
         val l = cfg.look
-        return "${app.key}|$px|$generation|${l.iconShape}|${l.iconPack}|${cfg.icons[app.key]?.hashCode() ?: 0}"
+        val tint = if (l.iconTint == "normal") "" else "${l.iconTint}${l.accent}"
+        return "${app.key}|$px|$generation|${l.iconShape}|${l.iconPack}|$tint|${cfg.icons[app.key]?.hashCode() ?: 0}"
     }
 
     fun render(key: String, app: AppEntry, cfg: Config, px: Int): ImageBitmap {
         cache.get(key)?.let { return it }
         val o = cfg.icons[app.key]
         val shape = o?.shape ?: cfg.look.iconShape
-        val bmp = draw(source(app, cfg), app.labelIn(cfg), shape, px).asImageBitmap()
+        val bmp = draw(source(app, cfg), app.labelIn(cfg), shape, px, cfg.look.iconTint, cfg.look.accent.toInt()).asImageBitmap()
         cache.put(key, bmp)
         return bmp
     }
@@ -210,11 +220,12 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
     }
 
     @Synchronized
-    private fun draw(d: Drawable?, label: String, shape: String, px: Int): Bitmap {
+    private fun draw(d: Drawable?, label: String, shape: String, px: Int, tint: String = "normal", accent: Int = 0): Bitmap {
         val size = max(px, 16)
         val content = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(content)
         var masked = shape != "ninguna"
+        var tinted = false
         paint.shader = null
         when {
             d == null -> {
@@ -233,6 +244,17 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
                 paint.getTextBounds(initials, 0, initials.length, bounds)
                 canvas.drawText(initials, size / 2f, size / 2f + bounds.height() / 2f, paint)
             }
+            // Tintado con capa monocroma propia (Android 13+): placa oscura y el dibujo en el color de acento.
+            tint != "normal" && d is AdaptiveIconDrawable && android.os.Build.VERSION.SDK_INT >= 33 && d.monochrome != null -> {
+                masked = true
+                canvas.drawColor(0xFF1B1C22.toInt())
+                val mono = d.monochrome!!.mutate()
+                mono.setTint(if (tint == "gris") 0xFFE6E8EC.toInt() else accent)
+                val extra = (size * 0.25f).toInt()
+                mono.setBounds(-extra, -extra, size + extra, size + extra)
+                mono.draw(canvas)
+                tinted = true
+            }
             masked && d is AdaptiveIconDrawable -> {
                 // Las capas miden 108dp y solo se ven 72dp: sobresalen un 25 % por cada lado.
                 val extra = (size * 0.25f).toInt()
@@ -250,6 +272,19 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
                 canvas.drawBitmap(b, src, Rect(0, 0, size, size), paint)
             }
             else -> { d.setBounds(0, 0, size, size); d.draw(canvas) }
+        }
+        if (tint != "normal" && !tinted) {
+            // Sin capa monocroma: el icono se pasa a gris y, en "tintado", se multiplica por el acento.
+            val gray = android.graphics.ColorMatrix().apply { setSaturation(0f) }
+            if (tint == "tintado") gray.postConcat(android.graphics.ColorMatrix().apply {
+                setScale(Color.red(accent) / 255f * 1.15f, Color.green(accent) / 255f * 1.15f, Color.blue(accent) / 255f * 1.15f, 1f)
+            })
+            val copy = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            paint.colorFilter = android.graphics.ColorMatrixColorFilter(gray)
+            Canvas(copy).drawBitmap(content, 0f, 0f, paint)
+            paint.colorFilter = null
+            Canvas(content).apply { drawColor(0, android.graphics.PorterDuff.Mode.CLEAR); drawBitmap(copy, 0f, 0f, null) }
+            copy.recycle()
         }
         if (!masked) return content
         // Máscara con borde suavizado: se pinta la forma usando el contenido como textura.

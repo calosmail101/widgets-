@@ -47,6 +47,9 @@ object Env {
 
     /** En pruebas: dibuja los iconos en el mismo hilo para que salgan en las capturas. */
     var syncIcons = false
+
+    /** Si no es null, la siguiente tecla pulsada se entrega aquí en vez de a la interfaz. */
+    var keyCapture: ((Int) -> Unit)? = null
     val ready get() = ::ctx.isInitialized
 
     fun init(context: Context, dir: File = context.filesDir) {

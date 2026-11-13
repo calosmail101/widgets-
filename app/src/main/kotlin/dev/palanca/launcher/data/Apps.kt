@@ -101,8 +101,8 @@ class AppRepository(private val ctx: Context, private val scope: CoroutineScope)
         }
     }
 
-    fun launch(app: AppEntry): Boolean = runCatching {
-        launcherApps!!.startMainActivity(app.component, Process.myUserHandle(), null, null)
+    fun launch(app: AppEntry, options: android.os.Bundle? = null): Boolean = runCatching {
+        launcherApps!!.startMainActivity(app.component, Process.myUserHandle(), null, options)
     }.isSuccess
 
     fun details(app: AppEntry) {

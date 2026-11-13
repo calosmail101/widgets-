@@ -66,9 +66,24 @@ object Privileged {
     }
 }
 
-/** Modos propios de la consola (ajustes del fabricante): se leen directamente y se cambian con [Privileged]. */
+/**
+ * Modos propios de la consola (ajustes del fabricante): se leen directamente y se cambian con [Privileged].
+ * Los valores de rendimiento y ventilador coinciden con los que documenta ClusterTune para AYN y Retroid.
+ */
 object DeviceModes {
     val PERFORMANCE = listOf(0 to "Standard", 1 to "Performance", 2 to "High performance")
+    val FAN = listOf(4 to "Smart", 5 to "Sport", 6 to "Personalizado")
+
+    /** Límites de frecuencia por grupo de núcleos (0, 3 y 7) para el QCS8550; valores probados por ClusterTune. */
+    val CPU_LIMITS = listOf(
+        "Sin límite" to intArrayOf(2016000, 2803200, 3187200),
+        "Pequeño" to intArrayOf(1785600, 2323200, 2476800),
+        "Medio" to intArrayOf(1555200, 2054400, 2092800),
+        "Grande" to intArrayOf(1459200, 1785600, 1843200),
+    )
+    private const val CPUFREQ = "/sys/devices/system/cpu/cpufreq"
+
+    fun <T> name(options: List<Pair<Int, T>>, value: Int): String = options.firstOrNull { it.first == value }?.second?.toString() ?: "modo $value"
 
     private fun read(key: String): Int = runCatching { Settings.System.getInt(Env.ctx.contentResolver, key) }.getOrDefault(-1)
     private fun write(key: String, value: Int): Boolean = Privileged.run("settings put system $key $value")
@@ -77,9 +92,22 @@ object DeviceModes {
     fun setPerformance(value: Int) = write("performance_mode", value)
     fun fan(): Int = read("fan_mode")
     fun setFan(value: Int) = write("fan_mode", value)
+    fun fanSpeed(): Int = read("fan_speed").coerceAtLeast(0)
+    fun setFanSpeed(value: Int) = write("fan_speed", value)
 
-    /** Solo se conoce con certeza el 4 (Smart); el resto se muestra por número hasta confirmarlo en la consola. */
-    fun fanName(value: Int) = if (value == 4) "Smart" else "modo $value"
+    fun cpuLimitsSupported(): Boolean =
+        android.os.Build.VERSION.SDK_INT >= 31 && android.os.Build.SOC_MODEL == "QCS8550" && Privileged.available()
+
+    /** Índice en [CPU_LIMITS] del límite activo, o -1 si no coincide con ninguno o no se puede leer. */
+    fun cpuLimit(): Int {
+        val now = runCatching { File("$CPUFREQ/policy7/scaling_max_freq").readText().trim().toInt() }.getOrDefault(-1)
+        return CPU_LIMITS.indexOfFirst { it.second[2] == now }
+    }
+
+    fun setCpuLimit(index: Int): Boolean {
+        val f = CPU_LIMITS.getOrNull(index)?.second ?: return false
+        return Privileged.run("sh -c \"cd $CPUFREQ; echo ${f[0]} > policy0/scaling_max_freq; echo ${f[1]} > policy3/scaling_max_freq; echo ${f[2]} > policy7/scaling_max_freq\"")
+    }
 }
 
 /**

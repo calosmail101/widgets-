@@ -122,7 +122,7 @@ object Telemetry {
             val t = (battery()?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE) ?: Int.MIN_VALUE)
             if (t == Int.MIN_VALUE) Reading.NONE else (t / 10f).let { c -> Reading(c.roundToInt().toString(), "°C", ((c - 20f) / 30f).coerceIn(0f, 1f)) }
         }
-        Metric.CPU_TEMP -> temperature(cpuZones ?: zones { "cpu" in it || "soc" in it || "tsens" in it }.also { cpuZones = it })
+        Metric.CPU_TEMP -> temperature(cpuZones ?: zones { "cpu" in it }.also { cpuZones = it })
         Metric.GPU_TEMP -> temperature(gpuZones ?: zones { "gpu" in it }.also { gpuZones = it })
         Metric.CPU_FREQ -> {
             val cores = (0 until Runtime.getRuntime().availableProcessors()).mapNotNull { i ->

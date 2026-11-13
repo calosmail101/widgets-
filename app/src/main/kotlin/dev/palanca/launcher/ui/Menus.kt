@@ -71,12 +71,8 @@ class MenuScreen(
     override fun Content() {
         LocalCfg.current // se relee al cambiar la configuración
         val list = items()
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).tap { Env.nav.pop() }) {
-            Column(
-                Modifier.align(Alignment.Center).width(540.dp).heightIn(max = 610.dp).enter(18.dp, 0.94f, 200)
-                    .background(WINDOW, RoundedCornerShape(34.dp))
-                    .tap { }.padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 20.dp),
-            ) {
+        Scrim({ Env.nav.pop() }) {
+            Window(Modifier.align(Alignment.Center).width(540.dp).heightIn(max = 610.dp)) {
                 T(index, 14, LocalAccent.current, FontWeight.Bold, mono = true)
                 Spacer(Modifier.height(6.dp))
                 T(title, 26, weight = FontWeight.Medium)

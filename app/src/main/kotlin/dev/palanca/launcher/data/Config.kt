@@ -56,6 +56,10 @@ data class Look(
     val statStyle: String = "segmentos",
     /** Versión del diseño ya aplicada a esta configuración (ver [migrate]). */
     val design: Int = 1,
+    /** Ventanas translúcidas con el fondo desenfocado. */
+    val glass: Boolean = true,
+    /** Estilo de color de los iconos: normal, tintado (acento) o claro. */
+    val iconTint: String = "normal",
 )
 
 @Serializable
@@ -70,13 +74,15 @@ data class Config(
     val swapAB: Boolean = false,
     val shortcuts: Map<String, String> = emptyMap(),
     val sound: Boolean = true,
-    val soundPack: String = "suave",
+    val soundPack: String = "toque",
     /** Canciones de fondo elegidas por el usuario (URIs con permiso persistente). */
     val music: List<String> = emptyList(),
     val musicOn: Boolean = true,
     val musicVolume: Int = 15,
     /** App que abre el botón Jugar de Inicio (clave paquete/actividad). */
     val playApp: String? = null,
+    /** Tecla que enciende y apaga el puntero; 0 = mantener L3 + R3. */
+    val pointerKey: Int = 0,
     val haptics: Boolean = true,
 ) {
     fun look(f: Look.() -> Look) = copy(look = look.f())
@@ -90,7 +96,9 @@ data class Config(
  * Lleva una configuración antigua al diseño actual. Solo toca los valores que seguían
  * en su valor de fábrica: lo que el usuario eligió a mano se respeta.
  */
-fun migrate(c: Config): Config {
+fun migrate(old: Config): Config {
+    // Los paquetes de sonido antiguos ya no existen: pasan al nuevo por defecto.
+    val c = if (old.soundPack in setOf("toque", "burbuja", "cristal", "arcade")) old else old.copy(soundPack = "toque")
     if (c.look.design >= 2) return c
     val l = c.look
     return c.copy(

@@ -34,6 +34,7 @@ import dev.palanca.launcher.data.Backup
 import dev.palanca.launcher.data.Config
 import dev.palanca.launcher.data.Diagnostics
 import dev.palanca.launcher.icons.ICON_SHAPES
+import dev.palanca.launcher.icons.ICON_TINTS
 import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.ActionId
@@ -58,6 +59,7 @@ private fun sections(): List<Section> = listOf(
     Section(
         "Tema", "Fuente y color de toda la interfaz",
         listOf(
+            Toggle("Ventanas de cristal", { it.look.glass }) { c, v -> c.look { copy(glass = v) } },
             Choice("Fuente", { FONT_THEMES.map { it.id to it.name } }, { it.look.font }) { c, v -> c.look { copy(font = v) } },
             Choice("Color de acento", { ACCENTS.map { it.first.toString() to it.second } }, { it.look.accent.toString() }, swatches = true) { c, v ->
                 c.look { copy(accent = v.toLong()) }
@@ -83,7 +85,11 @@ private fun sections(): List<Section> = listOf(
                 { it.look.iconPack ?: "" },
             ) { c, v -> c.look { copy(iconPack = v.ifEmpty { null }) } },
             Range("Tamaño", 70, 130, 5, "%", { (it.look.iconScale * 100 + 0.5f).toInt() }) { c, v -> c.look { copy(iconScale = v / 100f) } },
+            Choice("Color de los iconos", { ICON_TINTS }, { it.look.iconTint }) { c, v -> c.look { copy(iconTint = v) } },
             Toggle("Mostrar nombres", { it.look.labels }) { c, v -> c.look { copy(labels = v) } },
+            Act("Conseguir paquetes de iconos", { "Play Store" }) {
+                Actions.open(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("market://search?q=icon%20pack&c=apps"))
+            },
             Act("Restablecer iconos personalizados", { "${Env.cfg.value.icons.size} cambiados" }) {
                 Env.cfg.update { it.copy(icons = emptyMap()) }
             },
@@ -139,9 +145,13 @@ private fun sections(): List<Section> = listOf(
                     c.copy(shortcuts = c.shortcuts + (trigger.name to v))
                 }
             } + listOf(
-                Act("Puntero con mando (L3 + R3)", { if (Actions.pointerEnabled()) "activado" else "desactivado" }) {
+                Act("Puntero con mando", { if (Actions.pointerEnabled()) "activado" else "desactivado" }) {
                     Actions.open(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 },
+                Act("Botón del puntero", { Env.cfg.value.pointerKey.let { if (it == 0) "L3 + R3" else android.view.KeyEvent.keyCodeToString(it).removePrefix("KEYCODE_") } }) {
+                    Env.nav.push(KeyCaptureScreen("Botón del puntero") { code -> Env.cfg.update { it.copy(pointerKey = code) } })
+                },
+                Act("Volver a L3 + R3 para el puntero") { Env.cfg.update { it.copy(pointerKey = 0) } },
             ),
     ),
     Section(
@@ -164,6 +174,7 @@ private fun sections(): List<Section> = listOf(
 )
 
 class SettingsScreen : Screen {
+    override val overlay get() = true
     private val all = sections()
     private var section by mutableIntStateOf(0)
     private var zone by mutableIntStateOf(0) // 0 = secciones, 1 = filas
@@ -211,23 +222,24 @@ class SettingsScreen : Screen {
         val current = all[section]
         val list = rememberLazyListState()
         LaunchedEffect(row, section) { list.animateScrollToItem((row - 4).coerceAtLeast(0)) }
-        Frame(
-            "START", "Personalizar", current.note,
-            listOf("A" to "Cambiar", "◀ ▶" to "Ajustar", "L1 R1" to "Sección", "B" to "Volver"),
-        ) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+        Scrim({ Env.nav.pop() }) {
+          Window(Modifier.align(Alignment.Center).width(1120.dp).height(640.dp)) {
+            Row(Modifier.padding(start = 8.dp, bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
+                T("Personalizar", 24, weight = FontWeight.Medium)
+                Spacer(Modifier.width(16.dp))
+                T(current.note, 14, P.Dim, modifier = Modifier.weight(1f).padding(bottom = 3.dp))
+            }
+            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(26.dp)) {
                 Column(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     all.forEachIndexed { i, s ->
                         val on = i == section
                         Row(
                             Modifier.fillMaxWidth().height(48.dp)
                                 .background(if (on) accent else Color.Transparent, chamfer(12.dp))
-                                .brackets(on && zone == 0, P.Ink, gap = 3.dp, len = 10.dp, stroke = 2.5.dp)
+                                .brackets(on && zone == 0, P.Ink, gap = 3.dp, stroke = 2.5.dp, radius = 16.8.dp)
                                 .tap { section = i; row = 0; zone = 1 }.padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            T("0${i + 1}", 12, if (on) P.OnAccent else P.Dim, FontWeight.Bold, mono = true)
-                            Spacer(Modifier.width(12.dp))
                             T(s.title, 16, if (on) P.OnAccent else P.Dim, if (on) FontWeight.Bold else FontWeight.Normal)
                         }
                     }
@@ -283,6 +295,9 @@ class SettingsScreen : Screen {
                     }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            HintBar(listOf("A" to "Cambiar", "◀ ▶" to "Ajustar", "L1 R1" to "Sección", "B" to "Volver"))
+          }
         }
     }
 

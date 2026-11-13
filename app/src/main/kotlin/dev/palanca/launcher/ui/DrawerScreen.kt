@@ -71,6 +71,7 @@ fun gridMove(sel: Int, count: Int, cols: Int, btn: Btn, rows: Int = 1): Int {
 }
 
 class DrawerScreen : Screen {
+    private val created = android.os.SystemClock.uptimeMillis()
     private var tab by mutableIntStateOf(0)
     private var sel by mutableIntStateOf(0)
 
@@ -150,7 +151,9 @@ class DrawerScreen : Screen {
                         verticalArrangement = Arrangement.spacedBy(52.dp),
                     ) {
                         itemsIndexed(items, key = { _, a -> a.key }, contentType = { _, _ -> "app" }) { i, app ->
-                            Box(contentAlignment = Alignment.Center) {
+                            // Al abrir el cajón los iconos entran en diagonal, uno tras otro; después ya no se animan.
+                            val stagger = remember { i < 35 && android.os.SystemClock.uptimeMillis() < created + 450 }
+                            Box(if (stagger) Modifier.enter(70.dp, 0.7f, 420, delay = 60 + (i % cols + i / cols) * 34) else Modifier, contentAlignment = Alignment.Center) {
                                 AppTile(
                                     app, iconSize, i == sel,
                                     onTap = { sel = i; Actions.launch(app) },
