@@ -24,7 +24,7 @@ import kotlin.math.roundToInt
 
 enum class Metric(val title: String) {
     BATTERY("Batería"), POWER("Consumo"), BAT_TEMP("Temps"), CPU_TEMP("T. CPU"), GPU_TEMP("T. GPU"),
-    CPU_FREQ("CPU"), RAM("Memoria"), STORAGE("Interno"), SD("Tarjeta SD"), PING("Ping"), WIFI("Wi‑Fi"), REFRESH("Pantalla");
+    CPU_FREQ("CPU"), GPU_LOAD("Uso GPU"), RAM("Memoria"), STORAGE("Interno"), SD("Tarjeta SD"), PING("Ping"), WIFI("Wi‑Fi"), REFRESH("Pantalla");
 
     companion object {
         fun of(id: String) = entries.firstOrNull { it.name == id }
@@ -78,6 +78,9 @@ object Telemetry {
             delay(PERIOD_MS)
         }
     }
+
+    /** Una lectura suelta de varias métricas (para la tira de estadísticas en juego). Llamar fuera del hilo de la interfaz. */
+    fun snapshot(metrics: List<Metric>): Map<Metric, Reading> = metrics.associateWith { m -> runCatching { sample(m) }.getOrDefault(Reading.NONE) }
 
     private val ctx: Context get() = Env.ctx
     private fun readLong(path: String): Long? = runCatching { File(path).readText().trim().toLong() }.getOrNull()
@@ -135,6 +138,10 @@ object Telemetry {
                 String.format("%.1f", cores.maxOf { it.first } / 1e6), "GHz",
                 cores.map { it.first.toFloat() / it.second }.average().toFloat(), "núcleo más rápido",
             )
+        }
+        Metric.GPU_LOAD -> {
+            val pct = runCatching { File("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage").readText().filter(Char::isDigit).toInt() }.getOrNull()
+            if (pct == null) Reading.NONE else Reading(pct.toString(), "%", pct / 100f)
         }
         Metric.RAM -> {
             val info = ActivityManager.MemoryInfo().also { ctx.getSystemService(ActivityManager::class.java).getMemoryInfo(it) }

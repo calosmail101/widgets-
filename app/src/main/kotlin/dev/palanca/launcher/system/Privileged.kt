@@ -58,8 +58,10 @@ object Privileged {
         var text: String? = null
         while (System.currentTimeMillis() < deadline) {
             Thread.sleep(150)
-            text = runCatching { out.readText() }.getOrNull()
-            if (!text.isNullOrEmpty()) break
+            val now = runCatching { out.readText() }.getOrNull()
+            // Se da por terminado cuando hay contenido y lleva un intervalo sin crecer.
+            if (!now.isNullOrEmpty() && now == text) break
+            text = now
         }
         runCatching { out.delete() }
         return text
@@ -77,32 +79,88 @@ object DeviceModes {
     fun <T> name(options: List<Pair<Int, T>>, value: Int): String = options.firstOrNull { it.first == value }?.second?.toString() ?: "modo $value"
 
     private fun read(key: String): Int = runCatching { Settings.System.getInt(Env.ctx.contentResolver, key) }.getOrDefault(-1)
-    private fun write(key: String, value: Int): Boolean = Privileged.run("settings put system $key $value")
+    // «cmd settings» habla con el servicio que ya está en marcha: es mucho más rápido que el comando «settings».
+    private fun write(key: String, value: Int): Boolean = Privileged.run("cmd settings put system $key $value")
 
     fun performance(): Int = read("performance_mode")
     fun setPerformance(value: Int) = write("performance_mode", value)
     fun fan(): Int = read("fan_mode")
     fun setFan(value: Int) = write("fan_mode", value)
-    /** Disposición de los botones ABXY (el mosaico "controller style" de la consola). */
-    val CONTROLLER = listOf(0 to "Retro", 1 to "Xbox")
-    fun controller(): Int = read("temp_abxy_layout_mode")
-    fun setController(value: Int) = write("temp_abxy_layout_mode", value)
-
     // ---- Luces de los sticks: encendido "1,1", color "#aarrggbb,#aarrggbb" y brillo 0..1 ----
     private fun text(key: String): String? = runCatching { Settings.System.getString(Env.ctx.contentResolver, key) }.getOrNull()
     fun lightsSupported() = text("joystick_light_enabled") != null
     fun lightsOn() = text("joystick_light_enabled")?.contains('1') == true
     fun lightsColor(): Int = runCatching { android.graphics.Color.parseColor(text("joystick_led_light_picker_color")!!.substringBefore(',')) }.getOrDefault(0xFFFFFFFF.toInt())
     fun lightsBrightness(): Int = ((text("led_light_brightness_percent")?.toFloatOrNull() ?: 0.5f) * 100).toInt()
-    fun setLights(on: Boolean, color: Int, brightness: Int): Boolean {
-        val hex = "#ff%06x".format(color and 0xFFFFFF)
-        val v = if (on) "1,1" else "0,0"
-        // Las comillas simples protegen la almohadilla: sin ellas la consola la tomaría por un comentario.
-        return Privileged.run("sh -c \"settings put system joystick_light_enabled $v; settings put system joystick_led_light_picker_color '$hex,$hex'; settings put system led_light_brightness_percent ${brightness.coerceIn(0, 100) / 100f}\"")
+    /** Envía solo lo que haya cambiado (los parámetros null se dejan como están), en un único comando rápido. */
+    fun sendLights(on: Boolean?, color: Int?, brightness: Int?): Boolean {
+        val parts = ArrayList<String>()
+        if (on != null) parts += "cmd settings put system joystick_light_enabled ${if (on) "1,1" else "0,0"}"
+        if (color != null) {
+            val hex = "#ff%06x".format(color and 0xFFFFFF)
+            // Las comillas simples protegen la almohadilla: sin ellas la consola la tomaría por un comentario.
+            parts += "cmd settings put system joystick_led_light_picker_color '$hex,$hex'"
+        }
+        if (brightness != null) parts += "cmd settings put system led_light_brightness_percent ${brightness.coerceIn(0, 100) / 100f}"
+        return parts.isEmpty() || Privileged.run("sh -c \"${parts.joinToString("; ")}\"")
     }
+
+    // ---- Detector: descubre qué ajuste cambia un mosaico de la consola ----
+
+    /** Foto de todos los ajustes y propiedades del sistema. Tarda uno o dos segundos: fuera del hilo de la interfaz. */
+    fun snapshot(): Map<String, String>? {
+        val out = Privileged.output("(cmd settings list system; echo @@; cmd settings list secure; echo @@; cmd settings list global; echo @@; getprop)", 9000) ?: return null
+        val sections = out.split("@@")
+        if (sections.size < 4) return null
+        val map = HashMap<String, String>()
+        listOf("system", "secure", "global").forEachIndexed { i, table ->
+            sections[i].lineSequence().forEach { line -> val eq = line.indexOf('='); if (eq > 0) map["$table:${line.substring(0, eq).trim()}"] = line.substring(eq + 1).trim() }
+        }
+        Regex("\\[(.+?)]: \\[(.*?)]").findAll(sections[3]).forEach { map["prop:${it.groupValues[1]}"] = it.groupValues[2] }
+        return map
+    }
+
+    /** Claves que cambian solas y no interesan (cachés, relojes, brillo, volumen…). */
+    private val NOISE = Regex("cache_key|time|uptime|brightness|volume|battery|boot|last_|count|seq|pid|netstats|wifi|bluetooth|usb|zen_", RegexOption.IGNORE_CASE)
+
+    fun diff(before: Map<String, String>, after: Map<String, String>): List<Triple<String, String, String>> =
+        after.filter { (k, v) -> before[k] != null && before[k] != v && !NOISE.containsMatchIn(k) }
+            .map { (k, v) -> Triple(k, before[k]!!, v) }
+
+    fun learnedValue(l: dev.palanca.launcher.data.Learned): String? = runCatching {
+        val cr = Env.ctx.contentResolver
+        when {
+            l.kind == "propiedad" -> Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, l.key) as String
+            l.table == "secure" -> Settings.Secure.getString(cr, l.key)
+            l.table == "global" -> Settings.Global.getString(cr, l.key)
+            else -> Settings.System.getString(cr, l.key)
+        }
+    }.getOrNull()
+
+    fun setLearned(l: dev.palanca.launcher.data.Learned, value: String): Boolean =
+        if (l.kind == "propiedad") Privileged.run("setprop ${l.key} $value") else Privileged.run("cmd settings put ${l.table} ${l.key} $value")
 
     fun fanSpeed(): Int = read("fan_speed").coerceAtLeast(0)
     fun setFanSpeed(value: Int) = write("fan_speed", value)
+}
+
+/** FPS reales de lo que haya en pantalla, a partir del contador de fotogramas del compositor de Android. */
+object FpsMeter {
+    private var lastFrames = -1L
+    private var lastTime = 0L
+
+    fun start() { lastFrames = -1; Privileged.run("dumpsys SurfaceFlinger --timestats -enable -clear") }
+    fun stop() { Privileged.run("dumpsys SurfaceFlinger --timestats -disable") }
+
+    /** Bloquea unos 300 ms. Devuelve null si la consola no da el contador. */
+    fun read(): Int? {
+        val out = Privileged.output("(dumpsys SurfaceFlinger --timestats -dump | head -c 700)", 1200) ?: return null
+        val frames = Regex("totalFrames\\s*=\\s*(\\d+)").find(out)?.groupValues?.get(1)?.toLongOrNull() ?: return null
+        val now = android.os.SystemClock.uptimeMillis()
+        val fps = if (lastFrames >= 0 && now > lastTime) ((frames - lastFrames) * 1000 / (now - lastTime)).toInt() else null
+        lastFrames = frames; lastTime = now
+        return fps?.coerceIn(0, 240)
+    }
 }
 
 /**

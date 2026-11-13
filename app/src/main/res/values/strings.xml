@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="pointer_description">Mueve un puntero con el mando para tocar apps que no admiten mando. Mantén L3 + R3 para activarlo o apagarlo. También permite a Heaven abrir las apps recientes y las notificaciones. No lee ni guarda el contenido de la pantalla.</string>
+    <string name="pointer_description">Mueve un puntero con el mando para tocar apps que no admiten mando. Mantén L3 + R3 para activarlo o apagarlo. Mantén L1 + R1 + SELECT para mostrar u ocultar las estadísticas en juego. También permite a Heaven abrir las apps recientes y las notificaciones. No lee ni guarda el contenido de la pantalla.</string>
 </resources>

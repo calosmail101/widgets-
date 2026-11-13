@@ -62,7 +62,7 @@ private fun sections(): List<Section> = listOf(
         "Tema", "Fuente y color de toda la interfaz",
         listOf(
             Toggle("Ventanas y piezas de cristal", { it.look.glass }) { c, v -> c.look { copy(glass = v) } },
-            Range("Tamaño del texto", 100, 140, 4, "%", { it.look.textScale }) { c, v -> c.look { copy(textScale = v) } },
+            Range("Tamaño del texto", 100, 140, 1, "%", { it.look.textScale }) { c, v -> c.look { copy(textScale = v) } },
             Choice("Fuente", { FONT_THEMES.map { it.id to it.name } }, { it.look.font }) { c, v -> c.look { copy(font = v) } },
             Choice("Color de acento", { ACCENTS.map { it.first.toString() to it.second } }, { it.look.accent.toString() }, swatches = true) { c, v ->
                 c.look { copy(accent = v.toLong()) }
@@ -87,7 +87,7 @@ private fun sections(): List<Section> = listOf(
                 "Paquete de iconos", { listOf("" to "Originales") + Env.icons.packs.list().map { it.pkg to it.name } },
                 { it.look.iconPack ?: "" },
             ) { c, v -> c.look { copy(iconPack = v.ifEmpty { null }) } },
-            Range("Tamaño", 70, 130, 5, "%", { (it.look.iconScale * 100 + 0.5f).toInt() }) { c, v -> c.look { copy(iconScale = v / 100f) } },
+            Range("Tamaño", 70, 130, 1, "%", { (it.look.iconScale * 100 + 0.5f).toInt() }) { c, v -> c.look { copy(iconScale = v / 100f) } },
             Choice("Estilo de los iconos", { ICON_TINTS }, { it.look.iconTint }) { c, v -> c.look { copy(iconTint = v) } },
             Act("Añadir paquete desde un archivo .apk") {
                 Env.host?.openDocument(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) { uri -> if (uri != null) Backup.addIconPack(uri) }
@@ -106,14 +106,14 @@ private fun sections(): List<Section> = listOf(
         listOf(
             Choice("Tipo", { WALLPAPERS }, { it.look.wallpaper }) { c, v -> c.look { copy(wallpaper = v) } },
             Act("Elegir imagen", { if (Env.cfg.value.look.wallpaperFile != null) "cambiar" else "ninguna" }) { Backup.pickWallpaper() },
-            Range("Oscurecer", 0, 90, 5, "%", { it.look.wallpaperDim }) { c, v -> c.look { copy(wallpaperDim = v) } },
+            Range("Oscurecer", 0, 90, 1, "%", { it.look.wallpaperDim }) { c, v -> c.look { copy(wallpaperDim = v) } },
         ),
     ),
     Section(
         "Rejilla y tamaño", "Cuántas apps caben y cómo de grandes",
         listOf(
             Range("Columnas del cajón", 5, 9, 1, "", { it.look.drawerCols }) { c, v -> c.look { copy(drawerCols = v) } },
-            Range("Iconos de Inicio", 64, 104, 4, "", { it.look.dockSize }) { c, v -> c.look { copy(dockSize = v) } },
+            Range("Iconos de Inicio", 64, 104, 1, "", { it.look.dockSize }) { c, v -> c.look { copy(dockSize = v) } },
             Act("Mover las piezas de Inicio") { Env.nav.pop(); Env.nav.push(HomeEditScreen()) },
             Act("Devolver las piezas a su sitio") { Env.cfg.update { it.look { copy(offsets = emptyMap()) } } },
         ),
@@ -141,7 +141,7 @@ private fun sections(): List<Section> = listOf(
             Act("Añadir canciones", { "${Env.cfg.value.music.size} en la lista" }) {
                 Env.host?.pickAudio { uris -> Env.cfg.update { c -> c.copy(music = (c.music + uris.map { it.toString() }).distinct()) } }
             },
-            Range("Volumen de la música", 5, 60, 5, "%", { it.musicVolume }) { c, v -> c.copy(musicVolume = v) },
+            Range("Volumen de la música", 1, 60, 1, "%", { it.musicVolume }) { c, v -> c.copy(musicVolume = v) },
             Act("Quitar todas las canciones") { Env.cfg.update { it.copy(music = emptyList()) } },
         ),
     ),
@@ -171,7 +171,7 @@ private fun sections(): List<Section> = listOf(
         ),
     ),
     Section(
-        "Sistema", "Heaven ${runCatching { Env.ctx.packageManager.getPackageInfo(Env.ctx.packageName, 0).versionName }.getOrNull() ?: ""}",
+        "Sistema", "Heaven",
         listOf(
             Act("Usar Heaven como pantalla de inicio") { Actions.open(Settings.ACTION_HOME_SETTINGS) },
             Act("Ajustes de Android") { Actions.open(Settings.ACTION_SETTINGS) },

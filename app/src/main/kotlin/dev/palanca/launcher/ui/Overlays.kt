@@ -180,13 +180,10 @@ class QuickPanel : Screen, Closable {
     private val clusterTune = Env.apps.apps.value.firstOrNull { it.pkg == "com.aure.clustertune" }
     private val jobs = HashMap<String, Job>()
 
-    private var controller by mutableIntStateOf(DeviceModes.controller())
-    private val system: List<String> = buildList {
-        add("brillo"); add("volumen"); add("wifi"); add("bluetooth")
-        if (controller >= 0) add("mando")
-        if (DeviceModes.lightsSupported()) add("luces")
-        add("ajustes")
-    }
+    /** Las cuatro cajitas del final de CNTRL: estilo de mando, gatillos, luces y ajustes de Android. */
+    private val boxes = listOf("mando", "gatillos", "luces", "ajustes")
+    private var box by mutableIntStateOf(0)
+    private val system = listOf("brillo", "volumen", "wifi", "bluetooth", "cajas")
     private fun console(): List<String> = buildList {
         if (performance >= 0) add("rendimiento")
         if (fan >= 0) add("ventilador")
@@ -221,20 +218,20 @@ class QuickPanel : Screen, Closable {
         }
         when (rows().getOrNull(sel)) {
             // El brillo va de dos en dos (el stick derecho, de diez en diez): cambio gradual.
-            "brillo" -> if (Actions.canWriteSettings()) { brightness = (brightness + (if (kotlin.math.abs(delta) > 5) dir * 10 else dir * 2)).coerceIn(1, 100); Actions.setBrightness(brightness) }
-            "mando" -> change("pad", if (controller == 1) 0 else 1, { controller = it }, DeviceModes::setController, DeviceModes::controller)
+            // El brillo va de uno en uno (con el stick derecho, de cinco en cinco): cambio continuo.
+            "brillo" -> if (Actions.canWriteSettings()) { brightness = (brightness + (if (kotlin.math.abs(delta) > 5) dir * 5 else dir)).coerceIn(1, 100); Actions.setBrightness(brightness) }
             "volumen" -> { Actions.volumeStep(delta); volume = Actions.volume() }
             "rendimiento" -> change("perf", next(DeviceModes.PERFORMANCE, performance), { performance = it }, DeviceModes::setPerformance, DeviceModes::performance)
             "ventilador" -> change("fan", next(DeviceModes.FAN, fan), { fan = it }, DeviceModes::setFan, DeviceModes::fan)
-            "velocidad" -> if (fan == 6) change("speed", (fanSpeed + dir * 5).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
+            "velocidad" -> if (fan == 6) change("speed", (fanSpeed + dir * (if (kotlin.math.abs(delta) > 5) 5 else 1)).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
         }
     }
 
     private fun activate(row: String) {
         when (row) {
             "brillo" -> if (!Actions.canWriteSettings()) Actions.askWriteSettings()
-            "rendimiento", "ventilador", "velocidad", "mando" -> adjust(+5)
-            "luces" -> Env.nav.push(LightsScreen())
+            "rendimiento", "ventilador", "velocidad" -> adjust(+5)
+            "cajas" -> openBox(boxes[box])
             "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
             "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
             "clustertune" -> { Env.nav.pop(); clusterTune?.let { Actions.launch(it) } }
@@ -242,7 +239,16 @@ class QuickPanel : Screen, Closable {
         }
     }
 
-    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad", "mando")
+    private fun openBox(name: String) {
+        when (name) {
+            "mando" -> Env.nav.push(LearnedScreen("mando", "Estilo de mando", "Controller style", "Retro", "Xbox"))
+            "gatillos" -> Env.nav.push(LearnedScreen("gatillos", "Modo de los gatillos", "Trigger input mode", "Analógico", "Digital"))
+            "luces" -> if (DeviceModes.lightsSupported()) Env.nav.push(LightsScreen()) else Actions.toast("Esta consola no tiene luces configurables")
+            else -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
+        }
+    }
+
+    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad")
     private fun switchSide(to: Int) { if (to == 0 || console().isNotEmpty()) { side = to; sel = 0 } }
 
     override fun onPad(e: PadEvent): Boolean {
@@ -255,8 +261,8 @@ class QuickPanel : Screen, Closable {
             Btn.DOWN, Btn.RS_DOWN -> sel = (sel + 1) % rows.size
             // START guarda esta ventana y abre Custom al momento.
             Btn.START -> { Env.nav.pop(); Env.nav.push(SettingsScreen()) }
-            Btn.LEFT -> if (adjustable(row)) adjust(-5) else switchSide(0)
-            Btn.RIGHT -> if (adjustable(row)) adjust(+5) else switchSide(1)
+            Btn.LEFT -> if (row == "cajas") box = (box - 1).coerceAtLeast(0) else if (adjustable(row)) adjust(-5) else switchSide(0)
+            Btn.RIGHT -> if (row == "cajas") { if (box < boxes.lastIndex) box++ else switchSide(1) } else if (adjustable(row)) adjust(+5) else switchSide(1)
             Btn.L1 -> switchSide(0)
             Btn.R1 -> switchSide(1)
             Btn.RS_LEFT -> adjust(-15)
@@ -286,14 +292,25 @@ class QuickPanel : Screen, Closable {
                                 "volumen" -> Slider("Volumen", volume, on, tap)
                                 "wifi" -> ListRow("Wi‑Fi e internet", "", on, tap)
                                 "bluetooth" -> ListRow("Bluetooth", "", on, tap)
-                                "mando" -> ListRow("Estilo de mando", DeviceModes.name(DeviceModes.CONTROLLER, controller), on, tap, arrows = true)
-                                "luces" -> ListRow("Luces de los sticks", "", on, tap)
-                                // Ajustes de Android: solo un engranaje, centrado.
-                                else -> Box(
-                                    tap.fillMaxWidth().height(56.dp).background(if (on) P.Line else Color.Transparent, chamfer(12.dp))
-                                        .brackets(on, LocalAccent.current, gap = 2.dp, stroke = 2.5.dp, radius = 16.8.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) { GearGlyph(if (on) P.Ink else P.Dim, Modifier.size(30.dp)) }
+                                // Cuatro cajitas de cristal con su icono; cada una abre su ventana.
+                                else -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    boxes.forEachIndexed { k, name ->
+                                        val picked = on && k == box
+                                        Box(
+                                            Modifier.weight(1f).height(84.dp).brackets(picked, LocalAccent.current, gap = 3.dp, radius = 24.dp)
+                                                .glassPanel(RoundedCornerShape(24.dp)).tap { side = 0; sel = i; box = k; openBox(name) },
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            val ink = if (picked) P.Ink else P.Dim
+                                            when (name) {
+                                                "mando" -> PadGlyph(ink, Modifier.size(46.dp))
+                                                "gatillos" -> TriggerGlyph(ink, Modifier.size(40.dp))
+                                                "luces" -> LightGlyph(ink, Modifier.size(40.dp))
+                                                else -> GearGlyph(ink, Modifier.size(40.dp))
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             Spacer(Modifier.height(4.dp))
                         }
@@ -357,18 +374,30 @@ class LightsScreen : Screen, Closable {
 
     private fun color() = android.graphics.Color.HSVToColor(floatArrayOf(hue.toFloat(), 1f, 1f))
 
-    /** Envía el estado a la consola cuando se deja de mover (un solo comando, no uno por paso). */
+    private var sentOn: Boolean? = null
+    private var sentHue = -1
+    private var sentBrightness = -1
+
+    /**
+     * Envía a la consola lo que haya cambiado, mientras se mueve y no al soltar: como mucho un
+     * comando cada 90 ms, siempre con el valor más reciente.
+     */
     private fun apply() {
-        job?.cancel()
+        if (job?.isActive == true) return
         job = Env.scope.launch {
-            delay(280)
-            if (!withContext(Dispatchers.IO) { DeviceModes.setLights(on, color(), brightness) }) Actions.toast("Esta consola no permite cambiar las luces")
+            while (sentOn != on || sentHue != hue || sentBrightness != brightness) {
+                val o = on.takeIf { it != sentOn }; val h = hue.takeIf { it != sentHue }; val b = brightness.takeIf { it != sentBrightness }
+                sentOn = on; sentHue = hue; sentBrightness = brightness
+                val ok = withContext(Dispatchers.IO) { DeviceModes.sendLights(o, h?.let { color() }, b) }
+                if (!ok) { Actions.toast("Esta consola no permite cambiar las luces"); return@launch }
+                delay(90)
+            }
         }
     }
 
     override fun onStick(x: Float, y: Float) {
         if (kotlin.math.hypot(x, y) < 0.65f) return
-        val angle = ((Math.toDegrees(kotlin.math.atan2(y, x).toDouble()) + 360) % 360).toInt() / 6 * 6
+        val angle = ((Math.toDegrees(kotlin.math.atan2(y, x).toDouble()) + 360) % 360).toInt() / 2 * 2
         if (angle != hue) { hue = angle; on = true; apply() }
     }
 
@@ -381,8 +410,8 @@ class LightsScreen : Screen, Closable {
             Btn.LEFT, Btn.RIGHT -> {
                 when (row) {
                     0 -> on = !on
-                    1 -> hue = (hue + dir * 6 + 360) % 360
-                    else -> brightness = (brightness + dir * 5).coerceIn(5, 100)
+                    1 -> hue = (hue + dir * 3 + 360) % 360
+                    else -> brightness = (brightness + dir * 2).coerceIn(2, 100)
                 }
                 apply()
             }
@@ -433,9 +462,120 @@ class LightsScreen : Screen, Closable {
     }
 }
 
+/**
+ * Un control de la consola con dos estados. La primera vez hay que "enseñárselo" a Heaven: se toma
+ * una foto de los ajustes del sistema, se cambia el mosaico de Android y se compara. Después la
+ * ventana simplemente alterna entre los dos estados.
+ */
+class LearnedScreen(
+    private val id: String, private val title: String, private val tile: String,
+    private val nameA: String, private val nameB: String,
+) : Screen, Closable {
+    override val overlay get() = true
+    override var closing by mutableStateOf(false)
+    private var step by mutableIntStateOf(0) // 0 elegir modo actual · 1 esperando el cambio · 2 trabajando
+    private var currentIsA by mutableStateOf(true)
+    private var message by mutableStateOf("")
+    private var before: Map<String, String>? = null
+    private var value by mutableStateOf(Env.cfg.value.learned[id]?.let(DeviceModes::learnedValue))
+
+    private fun learned() = Env.cfg.value.learned[id]
+
+    private fun toggle() {
+        val l = learned() ?: return
+        val next = if (value == l.a) l.b else l.a
+        value = next
+        Env.scope.launch {
+            if (!withContext(Dispatchers.IO) { DeviceModes.setLearned(l, next) }) Actions.toast("La consola no aceptó el cambio")
+        }
+    }
+
+    private fun shoot() {
+        if (step == 2) return
+        val first = step == 0
+        step = 2; message = "Leyendo los ajustes de la consola…"
+        Env.scope.launch {
+            val photo = withContext(Dispatchers.IO) { DeviceModes.snapshot() }
+            if (photo == null) { step = 0; message = "No se pudieron leer los ajustes de esta consola."; return@launch }
+            if (first) {
+                before = photo; step = 1
+                message = "Ahora baja el panel de Android, cambia el mosaico «$tile» una vez y vuelve aquí."
+                return@launch
+            }
+            val changes = DeviceModes.diff(before!!, photo)
+            // Si cambian varias cosas, la que más se parece al nombre del mosaico.
+            val hit = changes.minByOrNull { (key, _, _) -> if (Regex("abxy|controller|gamepad|trigger|handle|style", RegexOption.IGNORE_CASE).containsMatchIn(key)) 0 else 1 }
+            if (hit == null) { step = 0; message = "No cambió ningún ajuste legible. Este modo habrá que averiguarlo con la consola conectada al PC."; return@launch }
+            val (key, old, new) = hit
+            val l = dev.palanca.launcher.data.Learned(
+                kind = if (key.startsWith("prop:")) "propiedad" else "ajuste", table = key.substringBefore(':'), key = key.substringAfter(':'),
+                a = if (currentIsA) old else new, b = if (currentIsA) new else old, nameA = nameA, nameB = nameB,
+            )
+            Env.cfg.update { it.copy(learned = it.learned + (id to l)) }
+            value = new; step = 0; message = "Aprendido: ${l.key}"
+        }
+    }
+
+    override fun onPad(e: PadEvent): Boolean {
+        if (e.long) return true
+        val l = learned()
+        when (e.btn) {
+            Btn.B -> Env.nav.pop()
+            Btn.LEFT, Btn.RIGHT -> if (l != null) toggle() else if (step == 0) currentIsA = !currentIsA
+            Btn.A -> if (l != null) toggle() else shoot()
+            // X olvida lo aprendido para poder repetir la detección.
+            Btn.X -> if (l != null) { Env.cfg.update { it.copy(learned = it.learned - id) }; step = 0; message = "" }
+            else -> Unit
+        }
+        return true
+    }
+
+    @Composable
+    override fun Content() {
+        val accent = LocalAccent.current
+        val l = LocalCfg.current.learned[id]
+        Popup(TransformOrigin(0.3f, 0.7f), closing, { Env.nav.pop() }) {
+            Window(Modifier.align(Alignment.Center).width(720.dp)) {
+                T(title, 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                if (l != null) {
+                    Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        listOf(l.a to l.nameA, l.b to l.nameB).forEach { (v, name) ->
+                            val picked = value == v
+                            Box(
+                                Modifier.weight(1f).height(96.dp).brackets(picked, accent, gap = 3.dp, radius = 26.dp).glassPanel(RoundedCornerShape(26.dp))
+                                    .tap { if (!picked) toggle() },
+                                contentAlignment = Alignment.Center,
+                            ) { T(name, 22, if (picked) P.Ink else P.Dim, if (picked) FontWeight.Medium else FontWeight.Normal) }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    HintBar(listOf("A" to "Cambiar", "X" to "Volver a detectar", "B" to "Cerrar"))
+                } else {
+                    T(
+                        when (step) {
+                            0 -> "Heaven todavía no sabe cómo cambia este modo en tu consola. Dime en cuál está ahora y pulsa A."
+                            else -> message
+                        },
+                        16, P.Dim, maxLines = 4, modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                    if (step == 0) {
+                        Spacer(Modifier.height(12.dp))
+                        ListRow("Ahora mismo está en", if (currentIsA) nameA else nameB, true, Modifier.tap { currentIsA = !currentIsA }, arrows = true)
+                        if (message.isNotEmpty()) T(message, 14, accent, maxLines = 3, modifier = Modifier.padding(start = 8.dp, top = 8.dp, end = 8.dp))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    HintBar(listOf("A" to if (step == 1) "Ya lo cambié" else "Empezar", "B" to "Cerrar"))
+                }
+            }
+        }
+    }
+}
+
 /** Mueve las piezas de Inicio (reloj, botones y tarjetas) con el stick; se dibuja encima de Inicio sin taparlo. */
 class HomeEditScreen : Screen {
     override val overlay get() = true
+    // Inicio tiene que verse nítido mientras se colocan sus piezas.
+    override val blursBelow get() = false
     private val pieces = listOf("reloj" to "Reloj", "botones" to "Botones", "tarjetas" to "Tarjetas")
     private var piece by mutableIntStateOf(0)
 
@@ -452,10 +592,10 @@ class HomeEditScreen : Screen {
     override fun onPad(e: PadEvent): Boolean {
         if (e.long) return true
         when (e.btn) {
-            Btn.LEFT -> nudge(-6, 0)
-            Btn.RIGHT -> nudge(+6, 0)
-            Btn.UP -> nudge(0, -6)
-            Btn.DOWN -> nudge(0, +6)
+            Btn.LEFT -> nudge(-2, 0)
+            Btn.RIGHT -> nudge(+2, 0)
+            Btn.UP -> nudge(0, -2)
+            Btn.DOWN -> nudge(0, +2)
             Btn.L1 -> { piece = (piece + pieces.size - 1) % pieces.size; editing = pieces[piece].first }
             Btn.R1 -> { piece = (piece + 1) % pieces.size; editing = pieces[piece].first }
             Btn.X -> Env.cfg.update { c -> c.look { copy(offsets = offsets - pieces[piece].first) } }

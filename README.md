@@ -24,6 +24,9 @@ entera con **sticks, cruceta y botones**, sin tocar la pantalla. También funcio
 - **Sonido**: tres paquetes de efectos sintetizados (suave, arcade, mecánico) y **música de fondo** con tus propias canciones, solo en Inicio y en el cajón.
 - **Modos de la consola** (Retroid/AYN): rendimiento y ventilador desde el panel rápido, usando el servicio PServer del firmware. El formato de ese servicio está documentado por [ClusterTune](https://github.com/AurelioB/ClusterTune) (MIT, © Aurelio Bernal).
 
+- **Estadísticas en juego**: con el servicio de accesibilidad activo, mantén **L1 + R1 + SELECT** en cualquier app para mostrar u ocultar una tira con FPS, temperaturas, uso de GPU, consumo y batería.
+- **Detector de mosaicos**: para modos que cada consola guarda a su manera (estilo de mando, gatillos), Heaven compara los ajustes del sistema antes y después de cambiar el mosaico de Android y aprende cuál es.
+
 ## Instalar
 
 1. Descarga `palanca.apk` desde **Releases** de este repositorio (se genera solo con cada cambio en `main`).

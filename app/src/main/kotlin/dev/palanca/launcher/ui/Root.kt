@@ -69,7 +69,7 @@ fun PalancaRoot() {
             val stack = Env.nav.stack
             val base = stack.indexOfLast { !it.overlay }.coerceAtLeast(0)
             // Una ventana que se está cerrando ya no cuenta como "encima": lo de debajo recupera la nitidez.
-            val covered = stack.indexOfLast { it.overlay && !(it is Closable && it.closing) }
+            val covered = stack.indexOfLast { it.overlay && it.blursBelow && !(it is Closable && it.closing) }
             // Música de fondo: solo con Inicio o el cajón como pantalla de base y el launcher delante.
             val foreground by Env.foreground.collectAsState()
             val calm = stack.getOrNull(base).let { it is HomeScreen || it is DrawerScreen }

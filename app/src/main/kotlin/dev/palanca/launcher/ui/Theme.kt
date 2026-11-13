@@ -177,6 +177,8 @@ interface Screen {
     fun onPad(e: PadEvent): Boolean
     /** Posición analógica del stick derecho (-1..1), para quien la quiera. */
     fun onStick(x: Float, y: Float) {}
+    /** Si esta pantalla, siendo superposición, desenfoca lo que tiene debajo. */
+    val blursBelow: Boolean get() = overlay
 }
 
 /** Pantalla que tiene animación de salida: [closing] pasa a true y poco después se retira. */
@@ -434,73 +436,114 @@ fun Popup(origin: TransformOrigin, closing: Boolean, onDismiss: () -> Unit, cont
     }
 }
 
+/** Esfera de agua: el tirador de deslizadores e interruptores. [stretch] la alarga en horizontal al moverse. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.waterSphere(center: Offset, radius: Float, color: Color, stretch: Float = 1f) {
+    val w = radius * stretch; val h = radius / kotlin.math.sqrt(stretch)
+    drawOval(color, Offset(center.x - w, center.y - h), Size(w * 2, h * 2))
+    // Brillo arriba a la izquierda y un reflejo tenue abajo: lo que la hace parecer una gota.
+    drawOval(Color.White.copy(alpha = 0.60f), Offset(center.x - w * 0.52f, center.y - h * 0.58f), Size(w * 0.46f, h * 0.36f))
+    drawOval(Color.White.copy(alpha = 0.16f), Offset(center.x - w * 0.1f, center.y + h * 0.28f), Size(w * 0.7f, h * 0.38f))
+}
+
 /**
- * Deslizador: una línea que se llena de color hasta una gota. La línea se levanta un poco justo
- * donde está la gota, y la gota llega a su sitio con un rebote leve.
+ * Deslizador: una línea que se llena de color hasta una esfera de agua. En reposo la línea es recta;
+ * solo mientras la esfera se mueve se levanta bajo ella, y la esfera llega con un rebote leve.
  */
 @Composable
 fun DropSlider(fraction: Float, color: Color, modifier: Modifier = Modifier) {
-    val at by animateFloatAsState(fraction.coerceIn(0f, 1f), spring(dampingRatio = 0.5f, stiffness = 260f), label = "drop")
-    Canvas(modifier.height(26.dp)) {
-        val r = 8.dp.toPx()
+    val target = fraction.coerceIn(0f, 1f)
+    val at by animateFloatAsState(target, spring(dampingRatio = 0.55f, stiffness = 300f), label = "drop")
+    val moving = kotlin.math.abs(at - target) > 0.0015f
+    val lift by animateFloatAsState(if (moving) 1f else 0f, tween(if (moving) 90 else 320), label = "lift")
+    Canvas(modifier.height(24.dp)) {
+        val r = 8.5.dp.toPx()
         val left = r; val right = size.width - r
-        val base = size.height * 0.68f
-        val x = left + (right - left) * at.coerceIn(-0.05f, 1.05f)
-        val lift = 5.dp.toPx(); val spread = 26.dp.toPx()
-        fun y(px: Float): Float { val d = (px - x) / spread; return base - lift * kotlin.math.exp(-d * d) }
+        val base = size.height * 0.56f
+        val x = left + (right - left) * at.coerceIn(-0.04f, 1.04f)
+        val rise = 5.dp.toPx() * lift; val spread = 28.dp.toPx()
+        fun y(px: Float): Float { val d = (px - x) / spread; return base - rise * kotlin.math.exp(-d * d) }
         val filled = Path(); val rest = Path()
-        val steps = 56
+        val steps = if (rise < 0.2f) 2 else 56
         for (i in 0..steps) {
             val px = left + (right - left) * i / steps
-            if (px <= x) { if (filled.isEmpty) filled.moveTo(px, y(px)) else filled.lineTo(px, y(px)) }
-            if (px >= x - (right - left) / steps) { if (rest.isEmpty) rest.moveTo(px, y(px)) else rest.lineTo(px, y(px)) }
+            if (px <= x || i == 0) { if (filled.isEmpty) filled.moveTo(px, y(px)) else filled.lineTo(px, y(px)) }
+            if (px >= x) { if (rest.isEmpty) { rest.moveTo(x, y(x)); rest.lineTo(px, y(px)) } else rest.lineTo(px, y(px)) }
         }
+        if (!filled.isEmpty) filled.lineTo(x, y(x))
         drawPath(rest, P.Ink.copy(alpha = 0.22f), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
         drawPath(filled, color, style = Stroke(3.6.dp.toPx(), cap = StrokeCap.Round))
-        // La gota: redonda abajo y acabada en punta arriba.
-        val cy = y(x) - r * 0.25f
-        val drop = Path().apply {
-            moveTo(x, cy - r * 1.75f)
-            cubicTo(x + r * 0.35f, cy - r * 1.0f, x + r, cy - r * 0.45f, x + r, cy + r * 0.12f)
-            cubicTo(x + r, cy + r * 0.68f, x + r * 0.55f, cy + r, x, cy + r)
-            cubicTo(x - r * 0.55f, cy + r, x - r, cy + r * 0.68f, x - r, cy + r * 0.12f)
-            cubicTo(x - r, cy - r * 0.45f, x - r * 0.35f, cy - r * 1.0f, x, cy - r * 1.75f)
-            close()
-        }
-        drawPath(drop, color)
-        drawCircle(Color.White.copy(alpha = 0.55f), r * 0.24f, Offset(x - r * 0.3f, cy + r * 0.05f))
+        // Se alarga un poco en la dirección del movimiento y recupera la forma al llegar.
+        waterSphere(Offset(x, y(x)), r, color, 1f + (kotlin.math.abs(at - target) * 6f).coerceAtMost(0.28f))
     }
 }
 
-/** Interruptor: una cápsula redonda con una gota que cruza de lado a lado con rebote. */
+/** Interruptor: una cápsula redonda con una esfera de agua que cruza de lado a lado con rebote. */
 @Composable
 fun DropSwitch(on: Boolean) {
     val accent = LocalAccent.current
     val at by animateFloatAsState(if (on) 1f else 0f, spring(dampingRatio = 0.5f, stiffness = 320f), label = "switch")
-    Canvas(Modifier.size(52.dp, 28.dp)) {
+    Canvas(Modifier.size(54.dp, 30.dp)) {
         val r = size.height / 2
         val t = at.coerceIn(0f, 1f)
-        drawRoundRect(lerp(P.Ink.copy(alpha = 0.16f), accent, t), size = size, cornerRadius = CornerRadius(r))
+        drawRoundRect(lerp(P.Ink.copy(alpha = 0.16f), accent.copy(alpha = 0.45f), t), size = size, cornerRadius = CornerRadius(r))
         val x = r + (size.width - 2 * r) * at.coerceIn(-0.08f, 1.08f)
-        // La gota se estira un poco mientras viaja.
-        val stretch = 1f + 0.35f * (1f - kotlin.math.abs(t - 0.5f) * 2f).coerceIn(0f, 1f)
-        drawOval(if (t > 0.5f) P.OnAccent else P.Ink, Offset(x - (r - 4.dp.toPx()) * stretch, 4.dp.toPx()), Size((r - 4.dp.toPx()) * 2 * stretch, size.height - 8.dp.toPx()))
+        val travel = (1f - kotlin.math.abs(t - 0.5f) * 2f).coerceIn(0f, 1f)
+        waterSphere(Offset(x, r), r - 4.dp.toPx(), lerp(P.Dim, accent, t), 1f + 0.3f * travel)
     }
 }
 
-/** Engranaje en dibujo de línea. */
+/** Engranaje sencillo en dibujo de línea: un aro y seis dientes anchos. */
 @Composable
 fun GearGlyph(color: Color, modifier: Modifier = Modifier) = Canvas(modifier) {
     val c = Offset(size.width / 2, size.height / 2)
     val r = size.minDimension / 2
-    val w = r * 0.13f
-    for (i in 0 until 8) {
-        val a = (i * 45.0) * kotlin.math.PI / 180
+    for (i in 0 until 6) {
+        val a = (i * 60.0 + 30) * kotlin.math.PI / 180
         val dir = Offset(kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat())
-        drawLine(color, c + dir * (r * 0.66f), c + dir * (r * 0.95f), w * 2.1f, StrokeCap.Round)
+        drawLine(color, c + dir * (r * 0.62f), c + dir * (r * 0.92f), r * 0.34f, StrokeCap.Round)
     }
-    drawCircle(color, r * 0.66f, c, style = Stroke(w))
-    drawCircle(color, r * 0.27f, c, style = Stroke(w))
+    drawCircle(color, r * 0.56f, c, style = Stroke(r * 0.2f))
+}
+
+/** Mando en dibujo de línea (para el estilo de botones). */
+@Composable
+fun PadGlyph(color: Color, modifier: Modifier = Modifier) = Canvas(modifier) {
+    val w = size.minDimension * 0.07f
+    val line = Stroke(w, cap = StrokeCap.Round)
+    drawRoundRect(color, Offset(w, size.height * 0.26f), Size(size.width - 2 * w, size.height * 0.48f), CornerRadius(size.height * 0.24f), line)
+    val y = size.height * 0.5f; val d = size.height * 0.085f
+    drawLine(color, Offset(size.width * 0.27f - d, y), Offset(size.width * 0.27f + d, y), w, StrokeCap.Round)
+    drawLine(color, Offset(size.width * 0.27f, y - d), Offset(size.width * 0.27f, y + d), w, StrokeCap.Round)
+    drawCircle(color, w * 0.85f, Offset(size.width * 0.68f, y + d * 0.7f))
+    drawCircle(color, w * 0.85f, Offset(size.width * 0.78f, y - d * 0.7f))
+}
+
+/** Gatillo en dibujo de línea: la curva del botón y, debajo, su recorrido. */
+@Composable
+fun TriggerGlyph(color: Color, modifier: Modifier = Modifier) = Canvas(modifier) {
+    val w = size.minDimension * 0.07f
+    val path = Path().apply {
+        moveTo(size.width * 0.2f, size.height * 0.62f)
+        cubicTo(size.width * 0.2f, size.height * 0.2f, size.width * 0.5f, size.height * 0.12f, size.width * 0.8f, size.height * 0.2f)
+        lineTo(size.width * 0.8f, size.height * 0.62f)
+        close()
+    }
+    drawPath(path, color, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    drawLine(color, Offset(size.width * 0.2f, size.height * 0.82f), Offset(size.width * 0.8f, size.height * 0.82f), w, StrokeCap.Round)
+}
+
+/** Luz en dibujo de línea: un punto con rayos. */
+@Composable
+fun LightGlyph(color: Color, modifier: Modifier = Modifier) = Canvas(modifier) {
+    val c = Offset(size.width / 2, size.height / 2)
+    val r = size.minDimension / 2
+    val w = r * 0.14f
+    drawCircle(color, r * 0.34f, c, style = Stroke(w))
+    for (i in 0 until 8) {
+        val a = i * 45.0 * kotlin.math.PI / 180
+        val dir = Offset(kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat())
+        drawLine(color, c + dir * (r * 0.62f), c + dir * (r * 0.9f), w, StrokeCap.Round)
+    }
 }
 
 /** Leyenda de botones al pie. La primera pareja es la acción principal. */

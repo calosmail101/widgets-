@@ -101,7 +101,8 @@ fun AppTile(
 
 fun pinnedApps(cfg: Config, apps: List<AppEntry>): List<AppEntry> {
     val byKey = apps.associateBy { it.key }
-    return cfg.pinned.mapNotNull { byKey[it] }
+    // Agrupadas por categoría (juegos, emuladores, multimedia, apps, sistema); dentro de cada una, en el orden en que se fijaron.
+    return cfg.pinned.mapNotNull { byKey[it] }.sortedBy { it.categoryIn(cfg).ordinal }
 }
 
 fun ago(ms: Long): String {
@@ -135,12 +136,12 @@ private val RIGHT_COLUMN = 560.dp
 class HomeScreen : Screen {
     private var page by mutableIntStateOf(0)
     private var zone by mutableIntStateOf(0) // 0 = carrusel · 1 = tarjetas · 2 = botones (jugar, todas)
-    private var dock by mutableIntStateOf(0)
+    private var dock by mutableIntStateOf(-1) // -1 = todavía sin elegir: se usa la app del centro
     private var card by mutableIntStateOf(0)
     private var button by mutableIntStateOf(0) // 0 = jugar · 1 = todas las apps
     private var widget by mutableIntStateOf(0)
 
-    fun reset() { page = 0; zone = 0 }
+    fun reset() { page = 0; zone = 0; dock = -1 }
 
     private fun pins() = pinnedApps(Env.cfg.value, Env.apps.apps.value)
     private fun playApp(cfg: Config) = Env.apps.apps.value.firstOrNull { it.key == cfg.playApp }
@@ -165,6 +166,8 @@ class HomeScreen : Screen {
 
     private fun homePad(e: PadEvent, cfg: Config): Boolean {
         val pins = pins()
+        // Al encender, el foco empieza en la app del centro: así hay apps a ambos lados, sin hueco.
+        if (dock < 0) dock = pins.size / 2
         dock = dock.coerceIn(0, (pins.size - 1).coerceAtLeast(0))
         val app = pins.getOrNull(dock)
         if (zone == 0 && pins.isEmpty()) zone = 2
@@ -317,7 +320,7 @@ class HomeScreen : Screen {
                             Spacer(Modifier.height(12.dp))
                             Piece("tarjetas") { Cards(cfg, apps, if (zone == 1) card else -1) }
                             Spacer(Modifier.weight(1f))
-                            Carousel(pins, look.dockSize.dp, dock.coerceIn(0, (pins.size - 1).coerceAtLeast(0)), zone == 0)
+                            Carousel(pins, look.dockSize.dp, (if (dock < 0) pins.size / 2 else dock).coerceIn(0, (pins.size - 1).coerceAtLeast(0)), zone == 0)
                         }
                     }
                     HintBar(
@@ -510,7 +513,7 @@ class HomeScreen : Screen {
                     val on = i == selected
                     Column(
                         Modifier.width(slot).tap(onLong = { dock = i; zone = 0; Env.nav.push(appMenu(app)) }) {
-                            if (dock == i && zone == 0) Actions.launch(app, 0.75f to 0.8f) else { dock = i; zone = 0 }
+                            if (selected == i && zone == 0) Actions.launch(app, 0.75f to 0.8f) else { dock = i; zone = 0 }
                         },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -519,7 +522,8 @@ class HomeScreen : Screen {
                                 .alpha(if (on) 1f else 0.62f)
                         ) { AppIcon(app, size) }
                         Spacer(Modifier.height(size * 0.15f + 14.dp))
-                        T(app.labelIn(cfg), 16, if (on) P.Ink else Color.Transparent, FontWeight.Medium, align = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                        // El hueco del nombre se reserva siempre para que los iconos no salten; el texto solo se pinta si los nombres están activos.
+                        T(app.labelIn(cfg), 16, if (on && cfg.look.labels) P.Ink else Color.Transparent, FontWeight.Medium, align = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }

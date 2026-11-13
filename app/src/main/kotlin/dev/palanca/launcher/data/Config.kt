@@ -66,6 +66,13 @@ data class Look(
     val iconTint: String = "normal",
 )
 
+/**
+ * Un ajuste de la consola con dos estados, descubierto comparando el sistema antes y después de
+ * cambiar su mosaico. [kind] es "ajuste" (tabla [table]) o "propiedad".
+ */
+@Serializable
+data class Learned(val kind: String, val table: String = "", val key: String, val a: String, val b: String, val nameA: String, val nameB: String)
+
 @Serializable
 data class Config(
     val look: Look = Look(),
@@ -87,6 +94,8 @@ data class Config(
     val playApp: String? = null,
     /** Tecla que enciende y apaga el puntero; 0 = mantener L3 + R3. */
     val pointerKey: Int = 0,
+    /** Controles de la consola aprendidos con el detector (estilo de mando, modo de gatillos). */
+    val learned: Map<String, Learned> = emptyMap(),
     val haptics: Boolean = true,
 ) {
     fun look(f: Look.() -> Look) = copy(look = look.f())

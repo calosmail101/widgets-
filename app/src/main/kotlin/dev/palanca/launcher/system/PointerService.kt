@@ -20,6 +20,10 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import dev.palanca.launcher.Env
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -60,6 +64,12 @@ class PointerService : AccessibilityService() {
     private var ringVx = 0f
     private var ringVy = 0f
 
+    private var l1 = false
+    private var r1 = false
+    private var select = false
+    private var hudCombo = false
+    private var hud: HudView? = null
+    private var hudJob: kotlinx.coroutines.Job? = null
     private var l3 = false
     private var r3 = false
     private var comboUsed = false
@@ -77,7 +87,7 @@ class PointerService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
     override fun onInterrupt() = Unit
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        setActive(false); instance = null
+        setActive(false); if (hud != null) toggleHud(); instance = null
         return super.onUnbind(intent)
     }
 
@@ -85,6 +95,13 @@ class PointerService : AccessibilityService() {
 
     private fun handleKey(event: KeyEvent): Boolean {
         val down = event.action == KeyEvent.ACTION_DOWN
+        // Estadísticas en juego: L1 + R1 + SELECT a la vez. No se consumen: el juego sigue recibiéndolas.
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_BUTTON_L1 -> l1 = down
+            KeyEvent.KEYCODE_BUTTON_R1 -> r1 = down
+            KeyEvent.KEYCODE_BUTTON_SELECT -> select = down
+        }
+        if (l1 && r1 && select) { if (!hudCombo) { hudCombo = true; toggleHud() } } else hudCombo = false
         val toggleKey = if (Env.ready) Env.cfg.value.pointerKey else 0
         if (toggleKey != 0) {
             // Botón propio elegido por el usuario: enciende o apaga al soltarlo y nunca llega a la app.
@@ -156,6 +173,58 @@ class PointerService : AccessibilityService() {
             canvas.drawCircle(c, c, 3.6f * density, paint)
             paint.color = accent
             canvas.drawCircle(c, c, 2.6f * density, paint)
+        }
+    }
+
+    /** Tira de estadísticas sobre cualquier app: una píldora translúcida arriba a la izquierda, sin foco ni toques. */
+    private inner class HudView(context: Context) : View(context) {
+        var text = "…"
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        override fun onDraw(canvas: Canvas) {
+            val d = resources.displayMetrics.density
+            paint.textSize = 13.5f * d
+            paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            val w = paint.measureText(text) + 22 * d
+            paint.style = Paint.Style.FILL; paint.color = 0x99101114.toInt()
+            canvas.drawRoundRect(0f, 0f, w, height.toFloat(), height / 2f, height / 2f, paint)
+            paint.color = 0xFFF2F3F5.toInt()
+            canvas.drawText(text, 11 * d, height / 2f - (paint.descent() + paint.ascent()) / 2, paint)
+        }
+    }
+
+    private fun toggleHud() {
+        hud?.let { view ->
+            hudJob?.cancel(); hudJob = null
+            runCatching { wm.removeView(view) }
+            hud = null
+            Thread { FpsMeter.stop() }.start()
+            return
+        }
+        if (!Env.ready) return
+        val d = resources.displayMetrics.density
+        val view = HudView(this)
+        val lp = WindowManager.LayoutParams(
+            (520 * d).toInt(), (26 * d).toInt(), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply { gravity = Gravity.TOP or Gravity.START; x = (10 * d).toInt(); y = (8 * d).toInt() }
+        if (runCatching { wm.addView(view, lp) }.isFailure) return
+        hud = view
+        val metrics = listOf(Metric.CPU_TEMP, Metric.GPU_TEMP, Metric.GPU_LOAD, Metric.POWER, Metric.BATTERY)
+        // Una lectura por segundo, fuera del hilo de la interfaz; solo mientras la tira está visible.
+        hudJob = Env.scope.launch {
+            withContext(Dispatchers.IO) { FpsMeter.start() }
+            while (true) {
+                val line = withContext(Dispatchers.IO) {
+                    val fps = FpsMeter.read()
+                    val r = Telemetry.snapshot(metrics)
+                    fun v(m: Metric) = r[m]?.takeIf { it.available }?.value ?: "—"
+                    "FPS ${fps ?: "—"}   CPU ${v(Metric.CPU_TEMP)}°   GPU ${v(Metric.GPU_TEMP)}° ${v(Metric.GPU_LOAD)}%   ${v(Metric.POWER)} W   ${v(Metric.BATTERY)}%"
+                }
+                view.text = line; view.invalidate()
+                delay(700)
+            }
         }
     }
 
