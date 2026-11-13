@@ -126,8 +126,8 @@ class DrawerScreen : Screen, Closable {
             if (shownTab != current) { shownTab = current; grid.scrollToItem(target) } else grid.animateScrollToItem(target)
         }
 
-        // Ventana de cristal que nace del icono «Todas las apps» (centro del carrusel) y se recoge en él.
-        Popup(TransformOrigin(0.5f, 0.8f), closing, { Env.nav.pop() }) {
+        // Ventana de cristal que nace del botón de todas las apps y se recoge en él.
+        Popup(TransformOrigin(0.31f, 0.6f), closing, { Env.nav.pop() }) {
           Window(Modifier.align(Alignment.Center).fillMaxWidth(0.955f).fillMaxHeight(0.93f)) {
             Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
                 Glyph("L1")
@@ -158,9 +158,7 @@ class DrawerScreen : Screen, Closable {
                         verticalArrangement = Arrangement.spacedBy(40.dp),
                     ) {
                         itemsIndexed(items, key = { _, a -> a.key }, contentType = { _, _ -> "app" }) { i, app ->
-                            // Al abrir el cajón los iconos entran en diagonal, uno tras otro; después ya no se animan.
-                            val stagger = remember { i < 35 && android.os.SystemClock.uptimeMillis() < created + 450 }
-                            Box(if (stagger) Modifier.enter(70.dp, 0.7f, 420, delay = 60 + (i % cols + i / cols) * 34) else Modifier, contentAlignment = Alignment.Center) {
+                            Box(contentAlignment = Alignment.Center) {
                                 AppTile(
                                     app, iconSize, i == sel,
                                     onTap = { sel = i; Actions.launch(app) },

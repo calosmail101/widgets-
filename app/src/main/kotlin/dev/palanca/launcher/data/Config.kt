@@ -60,6 +60,8 @@ data class Look(
     val glass: Boolean = true,
     /** Tamaño del texto en porcentaje. */
     val textScale: Int = 112,
+    /** Desplazamiento de las piezas de Inicio (reloj, botones, tarjetas) en unidades de diseño: "x,y". */
+    val offsets: Map<String, String> = emptyMap(),
     /** Estilo de color de los iconos: normal, tintado (acento) o claro. */
     val iconTint: String = "normal",
 )

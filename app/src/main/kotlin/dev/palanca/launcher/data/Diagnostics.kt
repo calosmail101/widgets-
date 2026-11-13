@@ -25,7 +25,7 @@ import java.io.File
  * No incluye datos personales: ni cuentas, ni archivos, ni lista completa de apps.
  */
 object Diagnostics {
-    private val INTERESTING = Regex("fan|perf|therm|mode|game|boost|cool|turbo|led|rgb|joystick|gamepad|retroid|odin|ayn|refresh|fps|qs_tiles|power_save|low_power", RegexOption.IGNORE_CASE)
+    private val INTERESTING = Regex("controller|style|trigger|charge|abxy|light|fan|perf|therm|mode|game|boost|cool|turbo|led|rgb|joystick|gamepad|retroid|odin|ayn|refresh|fps|qs_tiles|power_save|low_power", RegexOption.IGNORE_CASE)
     private val VENDOR_PACKAGES = Regex("retroid|odin|ayn|moorechip|gamekey|gameassist|keymap|joystick|handheld|fan|performance|thermal|gamespace|gamemode", RegexOption.IGNORE_CASE)
 
     fun export() {

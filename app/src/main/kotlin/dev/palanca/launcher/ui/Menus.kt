@@ -56,8 +56,8 @@ class MenuScreen(
         val list = items()
         sel = sel.coerceIn(0, (list.size - 1).coerceAtLeast(0))
         when (e.btn) {
-            Btn.UP -> sel = if (sel > 0) sel - 1 else list.lastIndex
-            Btn.DOWN -> sel = if (sel < list.lastIndex) sel + 1 else 0
+            Btn.UP, Btn.RS_UP -> sel = if (sel > 0) sel - 1 else list.lastIndex
+            Btn.DOWN, Btn.RS_DOWN -> sel = if (sel < list.lastIndex) sel + 1 else 0
             Btn.A -> if (!e.long) list.getOrNull(sel)?.let(::run)
             Btn.B, Btn.X -> if (!e.long) Env.nav.pop()
             else -> Unit
@@ -140,7 +140,9 @@ fun widgetMenu(slot: WidgetSlot) = MenuScreen("WIDGET", Env.widgets.info(slot.id
 }
 
 /** Lista de widgets instalados en el sistema. */
-class WidgetPicker : Screen {
+class WidgetPicker : Screen, Closable {
+    override val overlay get() = true
+    override var closing by mutableStateOf(false)
     private var sel by mutableIntStateOf(0)
     private val providers = Env.widgets.providers().sortedBy { it.loadLabel(Env.ctx.packageManager).lowercase() }
 
@@ -162,14 +164,19 @@ class WidgetPicker : Screen {
         val pm = Env.ctx.packageManager
         val state = rememberLazyListState()
         LaunchedEffect(sel) { if (providers.isNotEmpty()) state.animateScrollToItem((sel - 3).coerceAtLeast(0)) }
-        Frame("W", "Añadir widget", "Elige uno de los widgets instalados", listOf("A" to "Añadir", "B" to "Volver"), "${providers.size} disponibles") {
-            if (providers.isEmpty()) Label("No hay widgets instalados")
-            LazyColumn(state = state, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Popup(TransformOrigin(0.5f, 0.5f), closing, { Env.nav.pop() }) {
+          Window(Modifier.align(Alignment.Center).width(760.dp).heightIn(max = 600.dp)) {
+            T("Añadir widget", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
+            if (providers.isEmpty()) Label("No hay widgets instalados", modifier = Modifier.padding(8.dp))
+            LazyColumn(Modifier.weight(1f, fill = false), state = state, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 itemsIndexed(providers) { i, info ->
                     val app = remember(info) { runCatching { pm.getApplicationLabel(pm.getApplicationInfo(info.provider.packageName, 0)).toString() }.getOrDefault("") }
                     ListRow(info.loadLabel(pm), app, i == sel, Modifier.tap { sel = i; Env.nav.pop(); Env.host?.addWidget(info) })
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            HintBar(listOf("A" to "Añadir", "B" to "Volver"), left = "${providers.size} disponibles")
+          }
         }
     }
 }

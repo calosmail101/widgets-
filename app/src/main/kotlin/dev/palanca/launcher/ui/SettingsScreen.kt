@@ -89,7 +89,7 @@ private fun sections(): List<Section> = listOf(
             ) { c, v -> c.look { copy(iconPack = v.ifEmpty { null }) } },
             Range("Tamaño", 70, 130, 5, "%", { (it.look.iconScale * 100 + 0.5f).toInt() }) { c, v -> c.look { copy(iconScale = v / 100f) } },
             Choice("Estilo de los iconos", { ICON_TINTS }, { it.look.iconTint }) { c, v -> c.look { copy(iconTint = v) } },
-            Act("Añadir paquete desde un archivo .apk", { "elegir" }) {
+            Act("Añadir paquete desde un archivo .apk") {
                 Env.host?.openDocument(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) { uri -> if (uri != null) Backup.addIconPack(uri) }
             },
             Toggle("Mostrar nombres", { it.look.labels }) { c, v -> c.look { copy(labels = v) } },
@@ -114,6 +114,8 @@ private fun sections(): List<Section> = listOf(
         listOf(
             Range("Columnas del cajón", 5, 9, 1, "", { it.look.drawerCols }) { c, v -> c.look { copy(drawerCols = v) } },
             Range("Iconos de Inicio", 64, 104, 4, "", { it.look.dockSize }) { c, v -> c.look { copy(dockSize = v) } },
+            Act("Mover las piezas de Inicio") { Env.nav.pop(); Env.nav.push(HomeEditScreen()) },
+            Act("Devolver las piezas a su sitio") { Env.cfg.update { it.look { copy(offsets = emptyMap()) } } },
         ),
     ),
     Section(
@@ -171,8 +173,8 @@ private fun sections(): List<Section> = listOf(
     Section(
         "Sistema", "Heaven ${runCatching { Env.ctx.packageManager.getPackageInfo(Env.ctx.packageName, 0).versionName }.getOrNull() ?: ""}",
         listOf(
-            Act("Usar Heaven como pantalla de inicio", { "elegir" }) { Actions.open(Settings.ACTION_HOME_SETTINGS) },
-            Act("Ajustes de Android", { "abrir" }) { Actions.open(Settings.ACTION_SETTINGS) },
+            Act("Usar Heaven como pantalla de inicio") { Actions.open(Settings.ACTION_HOME_SETTINGS) },
+            Act("Ajustes de Android") { Actions.open(Settings.ACTION_SETTINGS) },
             Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
             Act("Memoria que usa Heaven", { "${android.os.Debug.getPss() / 1024} MB" }) { },
             Act("Exportar diagnóstico del dispositivo", { "guardar .txt" }) { Diagnostics.export() },
@@ -211,13 +213,15 @@ class SettingsScreen : Screen, Closable {
         when (e.btn) {
             Btn.L1 -> { section = (section + all.size - 1) % all.size; row = 0 }
             Btn.R1 -> { section = (section + 1) % all.size; row = 0 }
-            Btn.UP -> if (zone == 0) { section = (section + all.size - 1) % all.size; row = 0 } else row = (row + rows.size - 1) % rows.size
-            Btn.DOWN -> if (zone == 0) { section = (section + 1) % all.size; row = 0 } else row = (row + 1) % rows.size
+            Btn.UP, Btn.RS_UP -> if (zone == 0) { section = (section + all.size - 1) % all.size; row = 0 } else row = (row + rows.size - 1) % rows.size
+            Btn.DOWN, Btn.RS_DOWN -> if (zone == 0) { section = (section + 1) % all.size; row = 0 } else row = (row + 1) % rows.size
             Btn.RIGHT -> if (zone == 0) zone = 1 else if (current is Choice || current is Range) step(current, +1)
             Btn.LEFT -> if (zone == 1) { if (current is Choice || current is Range) step(current, -1) else zone = 0 }
             Btn.A -> if (zone == 0) zone = 1 else step(current, +1)
             Btn.B -> if (zone == 1) zone = 0 else Env.nav.pop()
             Btn.START -> Env.nav.pop()
+            // SELECT guarda esta ventana y abre CNTRL al momento.
+            Btn.SELECT -> { Env.nav.pop(); Env.nav.push(QuickPanel()) }
             else -> Unit
         }
         return true
@@ -280,7 +284,7 @@ class SettingsScreen : Screen, Closable {
                             val on = zone == 1 && i == row
                             val tap = Modifier.tap { zone = 1; row = i; step(r, +1) }
                             when (r) {
-                                is Toggle -> ListRow(r.title, "", on, tap) { Switch(r.get(cfg)) }
+                                is Toggle -> ListRow(r.title, "", on, tap) { DropSwitch(r.get(cfg)) }
                                 is Choice -> {
                                     val options = r.options()
                                     val value = r.get(cfg)
@@ -297,7 +301,11 @@ class SettingsScreen : Screen, Closable {
                                         }
                                     } else ListRow(r.title, options.firstOrNull { it.first == value }?.second ?: "—", on, tap, arrows = true)
                                 }
-                                is Range -> ListRow(r.title, "${r.get(cfg)}${if (r.unit.isEmpty()) "" else " " + r.unit}", on, tap, arrows = true)
+                                is Range -> ListRow(r.title, "", on, tap) {
+                                    T("${r.get(cfg)}${if (r.unit.isEmpty()) "" else " " + r.unit}", 14, if (on) accent else P.Dim, mono = true)
+                                    Spacer(Modifier.width(16.dp))
+                                    DropSlider((r.get(cfg) - r.min).toFloat() / (r.max - r.min), if (on) accent else P.Dim, Modifier.width(210.dp))
+                                }
                                 is Act -> ListRow(r.title, r.value(), on, tap)
                             }
                         }
@@ -307,19 +315,6 @@ class SettingsScreen : Screen, Closable {
             Spacer(Modifier.height(8.dp))
             HintBar(listOf("A" to "Cambiar", "◀ ▶" to "Ajustar", "L1 R1" to "Sección", "B" to "Volver"))
           }
-        }
-    }
-
-    @Composable
-    private fun Switch(on: Boolean) {
-        val accent = LocalAccent.current
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Label(if (on) "Sí" else "No", if (on) accent else P.Dim)
-            Spacer(Modifier.width(12.dp))
-            Row(Modifier.width(44.dp).height(20.dp).border(1.5.dp, if (on) accent else P.Dim).padding(3.dp)) {
-                if (on) Spacer(Modifier.weight(1f))
-                Box(Modifier.width(17.dp).fillMaxHeight().background(if (on) accent else P.Dim))
-            }
         }
     }
 }

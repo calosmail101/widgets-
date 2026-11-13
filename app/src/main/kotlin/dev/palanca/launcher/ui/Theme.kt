@@ -46,6 +46,9 @@ import androidx.compose.ui.unit.TextUnit
 import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
@@ -201,7 +204,7 @@ class Navigator {
 
     fun home() { while (stack.size > 1) stack.removeAt(stack.lastIndex) }
 
-    companion object { const val EXIT_MS = 230 }
+    companion object { const val EXIT_MS = 260 }
 }
 
 // ---- Piezas comunes ---------------------------------------------------------------------
@@ -404,11 +407,14 @@ fun Popup(origin: TransformOrigin, closing: Boolean, onDismiss: () -> Unit, cont
     LaunchedEffect(closing) {
         if (closing) {
             launch { veil.animateTo(0f, tween(Navigator.EXIT_MS)) }
-            grow.animateTo(0f, tween(Navigator.EXIT_MS, easing = CubicBezierEasing(0.5f, 0f, 0.9f, 0.4f)))
+            grow.animateTo(0f, tween(Navigator.EXIT_MS, easing = CubicBezierEasing(0.4f, 0f, 0.85f, 0.5f)))
         } else {
-            launch { veil.animateTo(1f, tween(220)) }
-            // Muelle con poco amortiguamiento: la gota se pasa un poco de tamaño y se asienta.
-            grow.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 300f))
+            // Dos fotogramas de margen: el contenido de la ventana se compone antes de empezar a crecer,
+            // así ese trabajo no se come los primeros fotogramas de la animación.
+            withFrameNanos { }; withFrameNanos { }
+            launch { veil.animateTo(1f, tween(260)) }
+            // Muelle suave: crece de forma continua y se asienta con un rebote mínimo.
+            grow.animateTo(1f, spring(dampingRatio = 0.78f, stiffness = 210f))
         }
     }
     Box(
@@ -426,6 +432,75 @@ fun Popup(origin: TransformOrigin, closing: Boolean, onDismiss: () -> Unit, cont
             content = content,
         )
     }
+}
+
+/**
+ * Deslizador: una línea que se llena de color hasta una gota. La línea se levanta un poco justo
+ * donde está la gota, y la gota llega a su sitio con un rebote leve.
+ */
+@Composable
+fun DropSlider(fraction: Float, color: Color, modifier: Modifier = Modifier) {
+    val at by animateFloatAsState(fraction.coerceIn(0f, 1f), spring(dampingRatio = 0.5f, stiffness = 260f), label = "drop")
+    Canvas(modifier.height(26.dp)) {
+        val r = 8.dp.toPx()
+        val left = r; val right = size.width - r
+        val base = size.height * 0.68f
+        val x = left + (right - left) * at.coerceIn(-0.05f, 1.05f)
+        val lift = 5.dp.toPx(); val spread = 26.dp.toPx()
+        fun y(px: Float): Float { val d = (px - x) / spread; return base - lift * kotlin.math.exp(-d * d) }
+        val filled = Path(); val rest = Path()
+        val steps = 56
+        for (i in 0..steps) {
+            val px = left + (right - left) * i / steps
+            if (px <= x) { if (filled.isEmpty) filled.moveTo(px, y(px)) else filled.lineTo(px, y(px)) }
+            if (px >= x - (right - left) / steps) { if (rest.isEmpty) rest.moveTo(px, y(px)) else rest.lineTo(px, y(px)) }
+        }
+        drawPath(rest, P.Ink.copy(alpha = 0.22f), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+        drawPath(filled, color, style = Stroke(3.6.dp.toPx(), cap = StrokeCap.Round))
+        // La gota: redonda abajo y acabada en punta arriba.
+        val cy = y(x) - r * 0.25f
+        val drop = Path().apply {
+            moveTo(x, cy - r * 1.75f)
+            cubicTo(x + r * 0.35f, cy - r * 1.0f, x + r, cy - r * 0.45f, x + r, cy + r * 0.12f)
+            cubicTo(x + r, cy + r * 0.68f, x + r * 0.55f, cy + r, x, cy + r)
+            cubicTo(x - r * 0.55f, cy + r, x - r, cy + r * 0.68f, x - r, cy + r * 0.12f)
+            cubicTo(x - r, cy - r * 0.45f, x - r * 0.35f, cy - r * 1.0f, x, cy - r * 1.75f)
+            close()
+        }
+        drawPath(drop, color)
+        drawCircle(Color.White.copy(alpha = 0.55f), r * 0.24f, Offset(x - r * 0.3f, cy + r * 0.05f))
+    }
+}
+
+/** Interruptor: una cápsula redonda con una gota que cruza de lado a lado con rebote. */
+@Composable
+fun DropSwitch(on: Boolean) {
+    val accent = LocalAccent.current
+    val at by animateFloatAsState(if (on) 1f else 0f, spring(dampingRatio = 0.5f, stiffness = 320f), label = "switch")
+    Canvas(Modifier.size(52.dp, 28.dp)) {
+        val r = size.height / 2
+        val t = at.coerceIn(0f, 1f)
+        drawRoundRect(lerp(P.Ink.copy(alpha = 0.16f), accent, t), size = size, cornerRadius = CornerRadius(r))
+        val x = r + (size.width - 2 * r) * at.coerceIn(-0.08f, 1.08f)
+        // La gota se estira un poco mientras viaja.
+        val stretch = 1f + 0.35f * (1f - kotlin.math.abs(t - 0.5f) * 2f).coerceIn(0f, 1f)
+        drawOval(if (t > 0.5f) P.OnAccent else P.Ink, Offset(x - (r - 4.dp.toPx()) * stretch, 4.dp.toPx()), Size((r - 4.dp.toPx()) * 2 * stretch, size.height - 8.dp.toPx()))
+    }
+}
+
+/** Engranaje en dibujo de línea. */
+@Composable
+fun GearGlyph(color: Color, modifier: Modifier = Modifier) = Canvas(modifier) {
+    val c = Offset(size.width / 2, size.height / 2)
+    val r = size.minDimension / 2
+    val w = r * 0.13f
+    for (i in 0 until 8) {
+        val a = (i * 45.0) * kotlin.math.PI / 180
+        val dir = Offset(kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat())
+        drawLine(color, c + dir * (r * 0.66f), c + dir * (r * 0.95f), w * 2.1f, StrokeCap.Round)
+    }
+    drawCircle(color, r * 0.66f, c, style = Stroke(w))
+    drawCircle(color, r * 0.27f, c, style = Stroke(w))
 }
 
 /** Leyenda de botones al pie. La primera pareja es la acción principal. */

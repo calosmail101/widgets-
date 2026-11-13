@@ -83,6 +83,24 @@ object DeviceModes {
     fun setPerformance(value: Int) = write("performance_mode", value)
     fun fan(): Int = read("fan_mode")
     fun setFan(value: Int) = write("fan_mode", value)
+    /** Disposición de los botones ABXY (el mosaico "controller style" de la consola). */
+    val CONTROLLER = listOf(0 to "Retro", 1 to "Xbox")
+    fun controller(): Int = read("temp_abxy_layout_mode")
+    fun setController(value: Int) = write("temp_abxy_layout_mode", value)
+
+    // ---- Luces de los sticks: encendido "1,1", color "#aarrggbb,#aarrggbb" y brillo 0..1 ----
+    private fun text(key: String): String? = runCatching { Settings.System.getString(Env.ctx.contentResolver, key) }.getOrNull()
+    fun lightsSupported() = text("joystick_light_enabled") != null
+    fun lightsOn() = text("joystick_light_enabled")?.contains('1') == true
+    fun lightsColor(): Int = runCatching { android.graphics.Color.parseColor(text("joystick_led_light_picker_color")!!.substringBefore(',')) }.getOrDefault(0xFFFFFFFF.toInt())
+    fun lightsBrightness(): Int = ((text("led_light_brightness_percent")?.toFloatOrNull() ?: 0.5f) * 100).toInt()
+    fun setLights(on: Boolean, color: Int, brightness: Int): Boolean {
+        val hex = "#ff%06x".format(color and 0xFFFFFF)
+        val v = if (on) "1,1" else "0,0"
+        // Las comillas simples protegen la almohadilla: sin ellas la consola la tomaría por un comentario.
+        return Privileged.run("sh -c \"settings put system joystick_light_enabled $v; settings put system joystick_led_light_picker_color '$hex,$hex'; settings put system led_light_brightness_percent ${brightness.coerceIn(0, 100) / 100f}\"")
+    }
+
     fun fanSpeed(): Int = read("fan_speed").coerceAtLeast(0)
     fun setFanSpeed(value: Int) = write("fan_speed", value)
 }

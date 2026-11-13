@@ -42,6 +42,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
 import dev.palanca.launcher.Env
 import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.fold
@@ -175,7 +180,13 @@ class QuickPanel : Screen, Closable {
     private val clusterTune = Env.apps.apps.value.firstOrNull { it.pkg == "com.aure.clustertune" }
     private val jobs = HashMap<String, Job>()
 
-    private val system = listOf("brillo", "volumen", "wifi", "bluetooth", "notificaciones", "ajustes")
+    private var controller by mutableIntStateOf(DeviceModes.controller())
+    private val system: List<String> = buildList {
+        add("brillo"); add("volumen"); add("wifi"); add("bluetooth")
+        if (controller >= 0) add("mando")
+        if (DeviceModes.lightsSupported()) add("luces")
+        add("ajustes")
+    }
     private fun console(): List<String> = buildList {
         if (performance >= 0) add("rendimiento")
         if (fan >= 0) add("ventilador")
@@ -209,27 +220,29 @@ class QuickPanel : Screen, Closable {
             return options[(if (i < 0) 0 else (i + dir).coerceIn(0, options.lastIndex))].first
         }
         when (rows().getOrNull(sel)) {
-            "brillo" -> if (Actions.canWriteSettings()) { brightness = (brightness + delta).coerceIn(1, 100); Actions.setBrightness(brightness) }
+            // El brillo va de dos en dos (el stick derecho, de diez en diez): cambio gradual.
+            "brillo" -> if (Actions.canWriteSettings()) { brightness = (brightness + (if (kotlin.math.abs(delta) > 5) dir * 10 else dir * 2)).coerceIn(1, 100); Actions.setBrightness(brightness) }
+            "mando" -> change("pad", if (controller == 1) 0 else 1, { controller = it }, DeviceModes::setController, DeviceModes::controller)
             "volumen" -> { Actions.volumeStep(delta); volume = Actions.volume() }
             "rendimiento" -> change("perf", next(DeviceModes.PERFORMANCE, performance), { performance = it }, DeviceModes::setPerformance, DeviceModes::performance)
             "ventilador" -> change("fan", next(DeviceModes.FAN, fan), { fan = it }, DeviceModes::setFan, DeviceModes::fan)
-            "velocidad" -> if (fan == 6) change("speed", (fanSpeed + dir * 10).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
+            "velocidad" -> if (fan == 6) change("speed", (fanSpeed + dir * 5).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
         }
     }
 
     private fun activate(row: String) {
         when (row) {
             "brillo" -> if (!Actions.canWriteSettings()) Actions.askWriteSettings()
-            "rendimiento", "ventilador", "velocidad" -> adjust(+5)
+            "rendimiento", "ventilador", "velocidad", "mando" -> adjust(+5)
+            "luces" -> Env.nav.push(LightsScreen())
             "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
             "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
-            "notificaciones" -> { Env.nav.pop(); Actions.run(dev.palanca.launcher.system.ActionId.NOTIFICATIONS) }
             "clustertune" -> { Env.nav.pop(); clusterTune?.let { Actions.launch(it) } }
             "ajustes" -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
         }
     }
 
-    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad")
+    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad", "mando")
     private fun switchSide(to: Int) { if (to == 0 || console().isNotEmpty()) { side = to; sel = 0 } }
 
     override fun onPad(e: PadEvent): Boolean {
@@ -238,8 +251,10 @@ class QuickPanel : Screen, Closable {
         sel = sel.coerceIn(0, (rows.size - 1).coerceAtLeast(0))
         val row = rows.getOrNull(sel)
         when (e.btn) {
-            Btn.UP -> sel = (sel + rows.size - 1) % rows.size
-            Btn.DOWN -> sel = (sel + 1) % rows.size
+            Btn.UP, Btn.RS_UP -> sel = (sel + rows.size - 1) % rows.size
+            Btn.DOWN, Btn.RS_DOWN -> sel = (sel + 1) % rows.size
+            // START guarda esta ventana y abre Custom al momento.
+            Btn.START -> { Env.nav.pop(); Env.nav.push(SettingsScreen()) }
             Btn.LEFT -> if (adjustable(row)) adjust(-5) else switchSide(0)
             Btn.RIGHT -> if (adjustable(row)) adjust(+5) else switchSide(1)
             Btn.L1 -> switchSide(0)
@@ -269,10 +284,16 @@ class QuickPanel : Screen, Closable {
                             when (row) {
                                 "brillo" -> Slider("Brillo", if (canWrite) brightness else -1, on, tap)
                                 "volumen" -> Slider("Volumen", volume, on, tap)
-                                "wifi" -> ListRow("Wi‑Fi e internet", "abrir", on, tap)
-                                "bluetooth" -> ListRow("Bluetooth", "abrir", on, tap)
-                                "notificaciones" -> ListRow("Notificaciones", "abrir", on, tap)
-                                else -> ListRow("Ajustes de Android", "abrir", on, tap)
+                                "wifi" -> ListRow("Wi‑Fi e internet", "", on, tap)
+                                "bluetooth" -> ListRow("Bluetooth", "", on, tap)
+                                "mando" -> ListRow("Estilo de mando", DeviceModes.name(DeviceModes.CONTROLLER, controller), on, tap, arrows = true)
+                                "luces" -> ListRow("Luces de los sticks", "", on, tap)
+                                // Ajustes de Android: solo un engranaje, centrado.
+                                else -> Box(
+                                    tap.fillMaxWidth().height(56.dp).background(if (on) P.Line else Color.Transparent, chamfer(12.dp))
+                                        .brackets(on, LocalAccent.current, gap = 2.dp, stroke = 2.5.dp, radius = 16.8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) { GearGlyph(if (on) P.Ink else P.Dim, Modifier.size(30.dp)) }
                             }
                             Spacer(Modifier.height(4.dp))
                         }
@@ -286,7 +307,7 @@ class QuickPanel : Screen, Closable {
                                 "rendimiento" -> ListRow("Modo", DeviceModes.name(DeviceModes.PERFORMANCE, performance), on, tap, arrows = true)
                                 "ventilador" -> ListRow("Ventilador", DeviceModes.name(DeviceModes.FAN, fan), on, tap, arrows = true)
                                 "velocidad" -> Box(Modifier.alpha(if (fan == 6) 1f else 0.4f)) { Slider(if (fan == 6) "Velocidad del ventilador" else "Velocidad (solo en Personalizado)", fanSpeed, on, tap) }
-                                else -> ListRow("ClusterTune · límites de CPU y GPU", "abrir", on, tap)
+                                else -> ListRow("ClusterTune · límites de CPU y GPU", "", on, tap)
                             }
                             Spacer(Modifier.height(4.dp))
                         }
@@ -294,7 +315,7 @@ class QuickPanel : Screen, Closable {
                 }
                 Spacer(Modifier.height(16.dp))
                 HintBar(
-                    listOf("A" to "Abrir", "◀ ▶" to "Ajustar") + (if (console.isEmpty()) emptyList() else listOf("L1 R1" to "Cambiar de ventana")) + listOf("B" to "Cerrar"),
+                    listOf("A" to "Elegir", "◀ ▶" to "Ajustar") + (if (console.isEmpty()) emptyList() else listOf("L1 R1" to "Cambiar de ventana")) + listOf("B" to "Cerrar"),
                     Modifier.width(if (console.isEmpty()) 600.dp else 1102.dp).padding(horizontal = 14.dp),
                 )
             }
@@ -312,10 +333,160 @@ class QuickPanel : Screen, Closable {
                 T(title, 16, if (selected) P.Ink else P.Dim, if (selected) FontWeight.Medium else FontWeight.Normal, modifier = Modifier.weight(1f))
                 T(if (value < 0) "pulsa A para dar permiso" else "$value %", 14, if (selected) accent else P.Dim, mono = true)
             }
-            Spacer(Modifier.height(10.dp))
-            Segments(if (value < 0) 0f else value / 100f, if (selected) accent else P.Ink, Modifier.fillMaxWidth(), count = 20)
+            Spacer(Modifier.height(4.dp))
+            DropSlider(if (value < 0) 0f else value / 100f, if (selected) accent else P.Dim, Modifier.fillMaxWidth())
         }
     }
+}
+
+/** Luces de los sticks: encendido, color (rueda con el stick derecho) y brillo. */
+class LightsScreen : Screen, Closable {
+    override val overlay get() = true
+    override var closing by mutableStateOf(false)
+    private var on by mutableStateOf(DeviceModes.lightsOn())
+    private var hue by mutableIntStateOf(0)
+    private var brightness by mutableIntStateOf(DeviceModes.lightsBrightness())
+    private var row by mutableIntStateOf(0)
+    private var job: Job? = null
+
+    init {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(DeviceModes.lightsColor(), hsv)
+        hue = hsv[0].toInt()
+    }
+
+    private fun color() = android.graphics.Color.HSVToColor(floatArrayOf(hue.toFloat(), 1f, 1f))
+
+    /** Envía el estado a la consola cuando se deja de mover (un solo comando, no uno por paso). */
+    private fun apply() {
+        job?.cancel()
+        job = Env.scope.launch {
+            delay(280)
+            if (!withContext(Dispatchers.IO) { DeviceModes.setLights(on, color(), brightness) }) Actions.toast("Esta consola no permite cambiar las luces")
+        }
+    }
+
+    override fun onStick(x: Float, y: Float) {
+        if (kotlin.math.hypot(x, y) < 0.65f) return
+        val angle = ((Math.toDegrees(kotlin.math.atan2(y, x).toDouble()) + 360) % 360).toInt() / 6 * 6
+        if (angle != hue) { hue = angle; on = true; apply() }
+    }
+
+    override fun onPad(e: PadEvent): Boolean {
+        if (e.long) return true
+        val dir = if (e.btn == Btn.LEFT) -1 else 1
+        when (e.btn) {
+            Btn.UP -> row = (row + 2) % 3
+            Btn.DOWN -> row = (row + 1) % 3
+            Btn.LEFT, Btn.RIGHT -> {
+                when (row) {
+                    0 -> on = !on
+                    1 -> hue = (hue + dir * 6 + 360) % 360
+                    else -> brightness = (brightness + dir * 5).coerceIn(5, 100)
+                }
+                apply()
+            }
+            Btn.A -> if (row == 0) { on = !on; apply() }
+            Btn.X -> {
+                // Mismo tono que el color de acento de la interfaz.
+                val hsv = FloatArray(3); android.graphics.Color.colorToHSV(Env.cfg.value.look.accent.toInt(), hsv)
+                hue = hsv[0].toInt(); on = true; apply()
+            }
+            Btn.B -> Env.nav.pop()
+            else -> Unit
+        }
+        return true
+    }
+
+    @Composable
+    override fun Content() {
+        val accent = LocalAccent.current
+        val tint = Color(color())
+        Popup(TransformOrigin(0.3f, 0.6f), closing, { Env.nav.pop() }) {
+            Window(Modifier.align(Alignment.Center).width(760.dp)) {
+                T("Luces de los sticks", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(Modifier.size(230.dp).padding(8.dp)) {
+                        val ring = 30.dp.toPx(); val radius = size.minDimension / 2 - ring / 2
+                        drawCircle(Brush.sweepGradient(List(13) { i -> Color(android.graphics.Color.HSVToColor(floatArrayOf(i * 30f % 360f, 1f, 1f))) }), radius, style = Stroke(ring))
+                        val a = Math.toRadians(hue.toDouble())
+                        val marker = Offset(center.x + kotlin.math.cos(a).toFloat() * radius, center.y + kotlin.math.sin(a).toFloat() * radius)
+                        drawCircle(Color.Black, ring * 0.62f, marker); drawCircle(tint, ring * 0.44f, marker)
+                        drawCircle(P.Ink, ring * 0.62f, marker, style = Stroke(3.dp.toPx()))
+                        drawCircle(if (on) tint else P.Line, radius - ring / 2 - 16.dp.toPx())
+                    }
+                    Spacer(Modifier.width(18.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ListRow("Encendidas", "", row == 0, Modifier.tap { row = 0; on = !on; apply() }) { DropSwitch(on) }
+                        ListRow("Color", "", row == 1, Modifier.tap { row = 1 }) { DropSlider(hue / 360f, tint, Modifier.width(230.dp)) }
+                        ListRow("Brillo", "", row == 2, Modifier.tap { row = 2 }) {
+                            T("$brightness %", 14, if (row == 2) accent else P.Dim, mono = true)
+                            Spacer(Modifier.width(14.dp))
+                            DropSlider(brightness / 100f, if (row == 2) accent else P.Dim, Modifier.width(170.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                HintBar(listOf("◀ ▶" to "Ajustar", "RS" to "Girar la rueda", "X" to "Como el acento", "B" to "Cerrar"))
+            }
+        }
+    }
+}
+
+/** Mueve las piezas de Inicio (reloj, botones y tarjetas) con el stick; se dibuja encima de Inicio sin taparlo. */
+class HomeEditScreen : Screen {
+    override val overlay get() = true
+    private val pieces = listOf("reloj" to "Reloj", "botones" to "Botones", "tarjetas" to "Tarjetas")
+    private var piece by mutableIntStateOf(0)
+
+    init { editing = pieces[0].first }
+
+    private fun nudge(dx: Int, dy: Int) = Env.cfg.update { c ->
+        val key = pieces[piece].first
+        val (x, y) = pieceOffset(c.look.offsets, key)
+        c.look { copy(offsets = offsets + (key to "${(x + dx).coerceIn(-500, 500)},${(y + dy).coerceIn(-300, 300)}")) }
+    }
+
+    private fun close() { editing = null; Env.nav.stack.remove(this) }
+
+    override fun onPad(e: PadEvent): Boolean {
+        if (e.long) return true
+        when (e.btn) {
+            Btn.LEFT -> nudge(-6, 0)
+            Btn.RIGHT -> nudge(+6, 0)
+            Btn.UP -> nudge(0, -6)
+            Btn.DOWN -> nudge(0, +6)
+            Btn.L1 -> { piece = (piece + pieces.size - 1) % pieces.size; editing = pieces[piece].first }
+            Btn.R1 -> { piece = (piece + 1) % pieces.size; editing = pieces[piece].first }
+            Btn.X -> Env.cfg.update { c -> c.look { copy(offsets = offsets - pieces[piece].first) } }
+            Btn.A, Btn.B, Btn.START -> close()
+            else -> Unit
+        }
+        return true
+    }
+
+    @Composable
+    override fun Content() {
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Window(Modifier.width(900.dp)) {
+                    T("Moviendo: ${pieces[piece].second}", 20, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
+                    HintBar(listOf("A" to "Listo", "L1 R1" to "Otra pieza", "X" to "A su sitio"), left = "Stick o cruceta: mover")
+                }
+            }
+        }
+    }
+
+    companion object {
+        /** Pieza que se está moviendo ahora (Inicio la marca con un anillo), o null. */
+        var editing by mutableStateOf<String?>(null)
+    }
+}
+
+/** Lee el desplazamiento "x,y" guardado para una pieza de Inicio. */
+fun pieceOffset(offsets: Map<String, String>, key: String): Pair<Int, Int> {
+    val parts = offsets[key]?.split(',')
+    return (parts?.getOrNull(0)?.toIntOrNull() ?: 0) to (parts?.getOrNull(1)?.toIntOrNull() ?: 0)
 }
 
 /** Ventana que espera a que se pulse un botón cualquiera y devuelve su código de tecla. */
