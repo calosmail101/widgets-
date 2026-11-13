@@ -26,6 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
@@ -37,6 +40,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -65,7 +71,14 @@ object P {
     val Dim = Color(0xFF9C988F)
     val Line = Color(0xFF2E2C29)
     val Panel = Color(0xFF10100F)
-    val OnAccent = Color(0xFF140A04)
+
+    /** Texto sobre el color de acento: oscuro o claro según lo luminoso que sea el acento. */
+    var OnAccent by mutableStateOf(Color(0xFF140A04))
+        private set
+
+    fun accentChanged(accent: Color) {
+        OnAccent = if (accent.luminance() > 0.32f) Color(0xFF140A04) else Ink
+    }
 }
 
 val ACCENTS = listOf(
@@ -73,13 +86,53 @@ val ACCENTS = listOf(
     0xFF7FB0FF to "Azul", 0xFFFF7DA0 to "Rosa", 0xFFEDEAE3 to "Hueso",
 )
 
+/**
+ * Fuente global: una familia para la interfaz y otra monoespaciada para los rótulos técnicos.
+ * [scale] compensa las fuentes que dibujan más ancho o más pequeño que el resto.
+ * Las familias se crean al usarlas: tener muchas no cuesta nada en marcha, solo tamaño de APK.
+ */
+class FontTheme(val id: String, val name: String, val scale: Float, ui: () -> FontFamily, mono: () -> FontFamily) {
+    val ui by lazy(ui)
+    val mono by lazy(mono)
+}
+
 @OptIn(ExperimentalTextApi::class)
-val Grotesk = FontFamily(
-    listOf(300, 400, 500, 700).map { w ->
-        Font(R.font.space_grotesk, FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w)))
-    }
+private fun variable(res: Int) = FontFamily(
+    listOf(300, 400, 500, 700).map { w -> Font(res, FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w))) }
 )
-val Mono = FontFamily(Font(R.font.space_mono, FontWeight.Normal), Font(R.font.space_mono_bold, FontWeight.Bold))
+private fun fixed(regular: Int, bold: Int = regular) =
+    FontFamily(Font(regular, FontWeight.Normal), Font(regular, FontWeight.Medium), Font(bold, FontWeight.Bold))
+
+private val spaceMono = { fixed(R.font.space_mono, R.font.space_mono_bold) }
+private val dmMono = { fixed(R.font.dm_mono) }
+private val shareTech = { fixed(R.font.share_tech_mono) }
+private val jetBrains = { variable(R.font.jetbrains_mono) }
+private val vt323 = { fixed(R.font.vt323) }
+
+val FONT_THEMES = listOf(
+    FontTheme("grotesk", "Space Grotesk", 1f, { variable(R.font.space_grotesk) }, spaceMono),
+    FontTheme("outfit", "Outfit", 1f, { variable(R.font.outfit) }, dmMono),
+    FontTheme("sora", "Sora", 0.94f, { variable(R.font.sora) }, jetBrains),
+    FontTheme("rubik", "Rubik", 1f, { variable(R.font.rubik) }, dmMono),
+    FontTheme("comfortaa", "Comfortaa", 0.94f, { variable(R.font.comfortaa) }, dmMono),
+    FontTheme("exo", "Exo 2", 1f, { variable(R.font.exo2) }, shareTech),
+    FontTheme("oxanium", "Oxanium", 1f, { variable(R.font.oxanium) }, shareTech),
+    FontTheme("chakra", "Chakra Petch", 1f, { fixed(R.font.chakra_petch, R.font.chakra_petch_bold) }, shareTech),
+    FontTheme("orbitron", "Orbitron", 0.86f, { variable(R.font.orbitron) }, shareTech),
+    FontTheme("audiowide", "Audiowide", 0.86f, { fixed(R.font.audiowide) }, shareTech),
+    FontTheme("bebas", "Bebas Neue", 1.12f, { fixed(R.font.bebas_neue) }, dmMono),
+    FontTheme("playfair", "Playfair Display", 1f, { variable(R.font.playfair) }, dmMono),
+    FontTheme("jetbrains", "JetBrains Mono", 0.92f, jetBrains, jetBrains),
+    FontTheme("major", "Major Mono", 0.86f, { fixed(R.font.major_mono) }, spaceMono),
+    FontTheme("pixelify", "Pixelify Sans", 1f, { variable(R.font.pixelify) }, vt323),
+    FontTheme("silkscreen", "Silkscreen", 0.8f, { fixed(R.font.silkscreen) }, vt323),
+    FontTheme("vt323", "VT323", 1.18f, vt323, vt323),
+    FontTheme("press", "Press Start 2P", 0.6f, { fixed(R.font.press_start) }, { fixed(R.font.press_start) }),
+)
+
+fun fontTheme(id: String) = FONT_THEMES.firstOrNull { it.id == id } ?: FONT_THEMES[0]
+
+val LocalFonts = staticCompositionLocalOf { FONT_THEMES[0] }
 
 val LocalAccent = compositionLocalOf { Color(0xFFFF6A2B) }
 val LocalCfg = compositionLocalOf { Config() }
@@ -98,6 +151,8 @@ interface Screen {
     @Composable fun Content()
     /** @return true si la pantalla usó el evento. */
     fun onPad(e: PadEvent): Boolean
+    /** Posición analógica del stick derecho (-1..1), para quien la quiera. */
+    fun onStick(x: Float, y: Float) {}
 }
 
 class Navigator {
@@ -114,15 +169,19 @@ class Navigator {
 fun T(
     text: String, size: Int = 16, color: Color = P.Ink, weight: FontWeight = FontWeight.Normal,
     mono: Boolean = false, modifier: Modifier = Modifier, maxLines: Int = 1, spacing: Float = 0f,
-    align: TextAlign = TextAlign.Start,
-) = BasicText(
-    text, modifier,
-    style = TextStyle(
-        color = color, fontSize = size.sp, fontFamily = if (mono) Mono else Grotesk, fontWeight = weight,
-        letterSpacing = spacing.sp, textAlign = align,
-    ),
-    maxLines = maxLines, overflow = TextOverflow.Ellipsis,
-)
+    align: TextAlign = TextAlign.Start, outline: Float = 0f,
+) {
+    val fonts = LocalFonts.current
+    BasicText(
+        text, modifier,
+        style = TextStyle(
+            color = color, fontSize = (size * fonts.scale).sp, fontFamily = if (mono) fonts.mono else fonts.ui,
+            fontWeight = weight, letterSpacing = spacing.sp, textAlign = align,
+            drawStyle = if (outline > 0f) Stroke(outline, join = StrokeJoin.Round) else null,
+        ),
+        maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+    )
+}
 
 /** Rótulo técnico: mayúsculas, monoespaciado, atenuado. */
 @Composable

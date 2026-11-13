@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity(), HostBridge {
             },
             swapAB = { Env.cfg.value.swapAB },
             emit = ::onPad,
+            analog = { x, y -> Env.nav.top?.onStick(x, y) },
         )
         // El fondo de Android solo se pide al sistema cuando se usa: así el negro es negro de verdad.
         lifecycleScope.launch {

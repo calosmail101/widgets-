@@ -15,6 +15,8 @@ import dev.palanca.launcher.system.Metric
 import dev.palanca.launcher.system.Reading
 import dev.palanca.launcher.system.Telemetry
 import dev.palanca.launcher.ui.Battery
+import dev.palanca.launcher.ui.CLOCK_STYLES
+import dev.palanca.launcher.ui.ColorPickerScreen
 import dev.palanca.launcher.ui.DrawerScreen
 import dev.palanca.launcher.ui.HomeScreen
 import dev.palanca.launcher.ui.IconEditorScreen
@@ -100,6 +102,32 @@ class ScreenshotTest {
         Env.cfg.update { it.look { copy(clockStyle = "segmentos", accent = 0xFF5FE3B0, iconShape = "chaflan", wallpaper = "negro") } }
         shot("1b-inicio-segmentos", pad = listOf(Btn.UP))
     }
+    @Test fun rueda() = shot("10-rueda-color", ColorPickerScreen(), pad = listOf(Btn.R1, Btn.R1, Btn.R1, Btn.R1, Btn.R1, Btn.DOWN, Btn.DOWN, Btn.DOWN, Btn.RIGHT))
+    @Test fun tema() {
+        Env.cfg.update { it.look { copy(font = "oxanium") } }
+        shot("11-tema-fuente", SettingsScreen(), pad = listOf(Btn.RIGHT))
+    }
+    @Test fun relojes() {
+        for ((id, _) in CLOCK_STYLES) {
+            Env.nav.stack.clear()
+            Env.cfg.update { it.look { copy(clockStyle = id) } }
+            if (id == CLOCK_STYLES.first().first) { Env.nav.push(HomeScreen()); compose.setContent { PalancaRoot() } }
+            else compose.runOnIdle { Env.nav.push(HomeScreen()) }
+            compose.waitForIdle()
+            compose.onRoot().captureRoboImage("build/shots/reloj-$id.png")
+        }
+    }
+    @Test fun fuentes() {
+        for (font in listOf("orbitron", "press", "vt323", "playfair", "bebas", "chakra")) {
+            Env.nav.stack.clear()
+            Env.cfg.update { it.look { copy(font = font, clockStyle = "grande") } }
+            if (font == "orbitron") { Env.nav.push(HomeScreen()); compose.setContent { PalancaRoot() } }
+            else compose.runOnIdle { Env.nav.push(HomeScreen()) }
+            compose.waitForIdle()
+            compose.onRoot().captureRoboImage("build/shots/fuente-$font.png")
+        }
+    }
+
     private fun stats(style: String, vararg metrics: Metric) =
         Env.cfg.update { it.look { copy(statStyle = style, stats = metrics.map { m -> m.name }) } }
 

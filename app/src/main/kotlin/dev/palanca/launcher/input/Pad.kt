@@ -35,6 +35,7 @@ class GamepadInput(
     private val scheduler: Scheduler,
     private val swapAB: () -> Boolean,
     private val emit: (PadEvent) -> Unit,
+    private val analog: (Float, Float) -> Unit = { _, _ -> },
 ) {
     private inner class Repeater {
         var current: Btn? = null
@@ -128,6 +129,7 @@ class GamepadInput(
             ?: direction(lx, ly, STICK_ON, STICK_OFF, axisDir, Btn.LEFT, Btn.RIGHT, Btn.UP, Btn.DOWN)
         left.set(keyDir ?: axisDir)
 
+        if (rx != rightX || ry != rightY) analog(rx, ry)
         rightX = rx; rightY = ry
         rightDir = direction(rx, ry, STICK_ON, STICK_OFF, rightDir, Btn.RS_LEFT, Btn.RS_RIGHT, Btn.RS_UP, Btn.RS_DOWN)
         right.set(rightDir)

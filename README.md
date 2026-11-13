@@ -10,7 +10,8 @@ entera con **sticks, cruceta y botones**, sin tocar la pantalla. También funcio
 - **Estadísticas** a elegir: batería, consumo en vatios, temperaturas, CPU, memoria, almacenamiento interno y tarjeta SD, ping, Wi‑Fi y refresco de pantalla; en tres tamaños y cuatro estilos (segmentos, anillo, gráfica, número).
 - **Cajón de apps** con categorías automáticas (Juegos, Emuladores, Multimedia, Apps, Sistema), apps ocultas y búsqueda.
 - **Iconos a tu gusto**: paquetes de iconos de Play Store (formato estándar ADW/Nova), una imagen de la galería por app, forma, tamaño y nombre.
-- **Reloj** en cuatro estilos (matriz de puntos, segmentos, grande, fino), color de acento, fecha y segundos.
+- **Reloj** en once estilos (matriz de puntos, segmentos, grande, fino, bloques, contorno, apilado, en palabras, binario, analógico y terminal), con fecha y segundos.
+- **Tema**: 18 fuentes para toda la interfaz y color de acento con rueda de color (tono, saturación, brillo y claros/oscuros).
 - **Fondos**: trama de puntos, negro AMOLED, dos animados, imagen propia o el fondo de Android.
 - **Widgets reales de Android** en la segunda página de Inicio.
 - **Panel rápido** (brillo, volumen, Wi‑Fi, Bluetooth, notificaciones) y **atajos de botones** configurables.
@@ -90,4 +91,6 @@ dibuja todas las pantallas a PNG en `app/build/shots/` sin necesidad de disposit
 - `system/` — acciones del sistema, sonidos, widgets y el servicio del puntero.
 - `ui/` — pantallas (Compose). Cada pantalla lleva su propia selección: no depende del foco de Android.
 
-Fuentes: Space Grotesk y Space Mono (SIL Open Font License).
+Fuentes incluidas (todas con licencia SIL Open Font License, de Google Fonts): Space Grotesk, Space Mono, Outfit, Sora, Rubik,
+Comfortaa, Exo 2, Oxanium, Chakra Petch, Orbitron, Audiowide, Bebas Neue, Playfair Display, JetBrains Mono, DM Mono,
+Share Tech Mono, Major Mono Display, Pixelify Sans, Silkscreen, VT323 y Press Start 2P.

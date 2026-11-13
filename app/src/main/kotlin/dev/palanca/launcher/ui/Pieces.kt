@@ -83,7 +83,7 @@ fun AppIcon(app: AppEntry, size: Dp, modifier: Modifier = Modifier) {
 
 // ---- Reloj ------------------------------------------------------------------------------
 
-val CLOCK_STYLES = listOf("matriz" to "Matriz de puntos", "segmentos" to "Segmentos", "grande" to "Grande", "fino" to "Fino")
+val CLOCK_STYLES = listOf("matriz" to "Matriz de puntos", "segmentos" to "Segmentos", "grande" to "Grande", "fino" to "Fino") + EXTRA_CLOCK_STYLES
 
 /** Hora fija para pruebas y capturas; null = hora real. */
 var fixedNow: LocalDateTime? = null
@@ -124,6 +124,7 @@ private val SEGMENTS = mapOf(
 
 @Composable
 fun ClockView(look: Look, height: Dp, time: LocalDateTime, modifier: Modifier = Modifier) {
+    if (ExtraClock(look, height, time, modifier)) return
     val text = timeText(look, time)
     val accent = LocalAccent.current
     when (look.clockStyle) {

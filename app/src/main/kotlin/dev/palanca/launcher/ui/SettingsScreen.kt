@@ -55,15 +55,22 @@ class Section(val title: String, val note: String, val rows: List<SRow>)
 
 private fun sections(): List<Section> = listOf(
     Section(
+        "Tema", "Fuente y color de toda la interfaz",
+        listOf(
+            Choice("Fuente", { FONT_THEMES.map { it.id to it.name } }, { it.look.font }) { c, v -> c.look { copy(font = v) } },
+            Choice("Color de acento", { ACCENTS.map { it.first.toString() to it.second } }, { it.look.accent.toString() }, swatches = true) { c, v ->
+                c.look { copy(accent = v.toLong()) }
+            },
+            Act("Rueda de color", { "#%06X".format(Env.cfg.value.look.accent and 0xFFFFFF) }) { Env.nav.push(ColorPickerScreen()) },
+        ),
+    ),
+    Section(
         "Reloj", "Así se ve en Inicio",
         listOf(
             Choice("Estilo", { CLOCK_STYLES }, { it.look.clockStyle }) { c, v -> c.look { copy(clockStyle = v) } },
             Toggle("Formato de 24 horas", { it.look.clock24 }) { c, v -> c.look { copy(clock24 = v) } },
             Toggle("Mostrar fecha", { it.look.clockDate }) { c, v -> c.look { copy(clockDate = v) } },
             Toggle("Segundos", { it.look.clockSeconds }) { c, v -> c.look { copy(clockSeconds = v) } },
-            Choice("Color de acento", { ACCENTS.map { it.first.toString() to it.second } }, { it.look.accent.toString() }, swatches = true) { c, v ->
-                c.look { copy(accent = v.toLong()) }
-            },
         ),
     ),
     Section(
@@ -213,13 +220,23 @@ class SettingsScreen : Screen {
                     }
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    if (section == 0) {
+                    if (current.title == "Reloj") {
                         Panel(Modifier.fillMaxWidth().height(132.dp)) {
                             val now by rememberNow(cfg.look.clockSeconds)
                             Row(Modifier.fillMaxSize().padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
-                                ClockView(cfg.look, 70.dp, now)
+                                ClockView(cfg.look, if (cfg.look.clockStyle in listOf("apilado", "palabras")) 84.dp else 70.dp, now)
                                 Spacer(Modifier.weight(1f))
                                 if (cfg.look.clockDate) Label(dateText(now), P.Ink, size = 13)
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                    }
+                    if (current.title == "Tema") {
+                        Panel(Modifier.fillMaxWidth().height(132.dp)) {
+                            Column(Modifier.fillMaxSize().padding(horizontal = 26.dp), verticalArrangement = Arrangement.Center) {
+                                T("Palanca · Año 2026 · ¡ñ, á, ü!", 30, weight = FontWeight.Medium)
+                                Spacer(Modifier.height(8.dp))
+                                Label("${fontTheme(cfg.look.font).name} — 0123456789", accent, size = 14)
                             }
                         }
                         Spacer(Modifier.height(14.dp))

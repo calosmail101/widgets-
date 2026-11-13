@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -44,7 +45,10 @@ fun PalancaRoot() {
             LocalCfg provides cfg,
             LocalAccent provides Color(cfg.look.accent),
             LocalIconGen provides iconGen,
+            LocalFonts provides fontTheme(cfg.look.font),
         ) {
+            val accentColor = Color(cfg.look.accent)
+            SideEffect { P.accentChanged(accentColor) }
             // Dibuja de antemano los iconos del cajón y de Inicio: al abrir el cajón ya están todos.
             val look = cfg.look
             val sizes = listOf(drawerIconSize(look.drawerCols), look.dockSize.dp)

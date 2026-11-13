@@ -35,6 +35,7 @@ data class WidgetSlot(val id: Int, val provider: String, val cols: Int = 2)
 @Serializable
 data class Look(
     val accent: Long = 0xFFFF6A2B,
+    val font: String = "grotesk",
     val clockStyle: String = "matriz",
     val clock24: Boolean = true,
     val clockDate: Boolean = true,
