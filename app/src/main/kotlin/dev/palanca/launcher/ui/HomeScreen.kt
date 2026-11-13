@@ -105,7 +105,8 @@ fun duration(ms: Long): String {
 
 class HomeScreen : Screen {
     private var page by mutableIntStateOf(0)
-    private var zone by mutableIntStateOf(0) // 0 = barra de apps, 1 = tarjeta "continuar"
+    private var zone by mutableIntStateOf(0) // 0 = barra de apps, 1 = tarjetas
+    private var card by mutableIntStateOf(0)
     private var dock by mutableIntStateOf(0)
     private var widget by mutableIntStateOf(0)
 
@@ -125,22 +126,49 @@ class HomeScreen : Screen {
         return true
     }
 
+    /** La estadística con foco se ha movido: la selección la sigue. */
+    private fun followStat(index: Int) {
+        val cfg = Env.cfg.value
+        card = index + if (cfg.look.cardContinue && Actions.lastApp() != null) 1 else 0
+    }
+
     private fun homePad(e: PadEvent, cfg: Config): Boolean {
         val pins = pins()
         dock = dock.coerceIn(0, pins.size)
         val app = pins.getOrNull(dock)
-        when (e.btn) {
-            Btn.LEFT -> if (zone == 0) dock = (dock - 1).coerceAtLeast(0)
-            Btn.RIGHT -> if (zone == 0) dock = (dock + 1).coerceAtMost(pins.size)
-            Btn.UP -> if (zone == 0 && cfg.look.cardContinue && Actions.lastApp() != null) zone = 1
-            Btn.DOWN -> if (zone == 1) zone = 0 else Env.nav.push(DrawerScreen())
-            Btn.A -> when {
-                zone == 1 -> Actions.lastApp()?.let(Actions::launch)
-                app != null -> Actions.launch(app)
-                else -> Env.nav.push(DrawerScreen())
+        // Tarjetas: [continuar] + estadísticas en rejilla.
+        val stats = statList(cfg)
+        val offset = if (cfg.look.cardContinue && Actions.lastApp() != null) 1 else 0
+        val total = offset + stats.size
+        if (zone == 1 && total == 0) zone = 0
+        card = card.coerceIn(0, (total - 1).coerceAtLeast(0))
+        val cols = statCols(statSize(cfg.look, stats.size))
+        val stat = card - offset // -1 = tarjeta "continuar"
+
+        if (zone == 1) {
+            when (e.btn) {
+                Btn.UP -> if (stat >= cols) card -= cols else if (stat >= 0 && offset == 1) card = 0
+                Btn.DOWN -> when {
+                    stat < 0 -> if (stats.isNotEmpty()) card = 1 else zone = 0
+                    stat + cols < stats.size -> card += cols
+                    stat / cols < (stats.size - 1) / cols -> card = total - 1
+                    else -> zone = 0
+                }
+                Btn.LEFT, Btn.RIGHT -> if (stat >= 0) card = offset + gridMove(stat, stats.size, cols, e.btn)
+                Btn.A, Btn.X -> if (stat < 0) Actions.lastApp()?.let(Actions::launch) else Env.nav.push(statMenu(stats[stat], ::followStat))
+                Btn.B -> zone = 0
+                else -> return false
             }
-            Btn.X -> if (zone == 0 && app != null && !e.long) Env.nav.push(appMenu(app))
-            Btn.RS_LEFT, Btn.RS_RIGHT -> if (zone == 0 && app != null) {
+            return true
+        }
+        when (e.btn) {
+            Btn.LEFT -> dock = (dock - 1).coerceAtLeast(0)
+            Btn.RIGHT -> dock = (dock + 1).coerceAtMost(pins.size)
+            Btn.UP -> if (total > 0) zone = 1
+            Btn.DOWN -> Env.nav.push(DrawerScreen())
+            Btn.A -> if (app != null) Actions.launch(app) else Env.nav.push(DrawerScreen())
+            Btn.X -> if (app != null) Env.nav.push(appMenu(app))
+            Btn.RS_LEFT, Btn.RS_RIGHT -> if (app != null) {
                 val to = (dock + if (e.btn == Btn.RS_LEFT) -1 else 1)
                 if (to in pins.indices) {
                     Env.cfg.update { c ->
@@ -152,7 +180,6 @@ class HomeScreen : Screen {
                     dock = to
                 }
             }
-            Btn.B -> zone = 0
             else -> return false
         }
         return true
@@ -221,11 +248,11 @@ class HomeScreen : Screen {
                                 }
                             }
                         }
-                        Cards(cfg, apps, battery, selected = zone == 1)
+                        Cards(cfg, apps, if (zone == 1) card else -1)
                     }
                     Dock(pins, look.dockSize.dp, if (zone == 0) dock else -1)
                     HintBar(
-                        if (zone == 1) listOf("A" to "Continuar", "B" to "Volver")
+                        if (zone == 1) listOf("A" to "Abrir / cambiar", "B" to "Volver")
                         else listOf("A" to "Abrir", "X" to "Opciones", "Y" to "Buscar", "RS" to "Mover", "START" to "Personalizar"),
                         left = "${apps.size} apps",
                     )
@@ -238,16 +265,18 @@ class HomeScreen : Screen {
     }
 
     @Composable
-    private fun Cards(cfg: Config, apps: List<AppEntry>, battery: Battery, selected: Boolean) {
+    private fun Cards(cfg: Config, apps: List<AppEntry>, selected: Int) {
         val look = cfg.look
         val accent = LocalAccent.current
         val stats by Env.stats.flow.collectAsState()
         val last = remember(stats, apps) { apps.filter { (stats.usage[it.key]?.last ?: 0) > 0 }.maxByOrNull { stats.usage[it.key]!!.last } }
-        Column(Modifier.width(400.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (look.cardContinue && last != null) {
+        val showContinue = look.cardContinue && last != null
+        val offset = if (showContinue) 1 else 0
+        Column(Modifier.width(420.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (showContinue && last != null) {
                 val usage = stats.usage[last.key]!!
                 val game = last.categoryIn(cfg).let { it == Cat.JUEGOS || it == Cat.EMULADORES }
-                Panel(Modifier.fillMaxWidth().brackets(selected, accent).tap { Actions.launch(last) }) {
+                Panel(Modifier.fillMaxWidth().brackets(selected == 0, accent).tap { Actions.launch(last) }) {
                     Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                         Label(if (game) "01 — Seguir jugando" else "01 — Continuar")
                         Spacer(Modifier.height(12.dp))
@@ -266,30 +295,9 @@ class HomeScreen : Screen {
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                if (look.cardBattery && battery.percent >= 0) {
-                    Panel(Modifier.weight(1f)) {
-                        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                            Label("02 — Batería")
-                            Spacer(Modifier.height(8.dp))
-                            T("${battery.percent} %", 28, weight = FontWeight.Medium)
-                            Spacer(Modifier.height(10.dp))
-                            Segments(battery.percent / 100f, accent, Modifier.fillMaxWidth(), count = 12)
-                        }
-                    }
-                }
-                if (look.cardStorage) {
-                    val (free, total) = remember { Actions.storage() }
-                    if (total > 0) Panel(Modifier.weight(1f)) {
-                        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                            Label("03 — Libre")
-                            Spacer(Modifier.height(8.dp))
-                            T("${free / 1_000_000_000} GB", 28, weight = FontWeight.Medium)
-                            Spacer(Modifier.height(10.dp))
-                            Segments(1f - free.toFloat() / total, P.Ink, Modifier.fillMaxWidth(), count = 12)
-                        }
-                    }
-                }
+            val metrics = remember(look.stats) { statList(cfg) }
+            StatsGrid(metrics, look, if (selected >= offset) selected - offset else -1, firstNumber = offset + 1) { i ->
+                zone = 1; card = offset + i; Env.nav.push(statMenu(metrics[i], ::followStat))
             }
         }
     }

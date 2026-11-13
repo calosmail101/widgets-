@@ -97,8 +97,14 @@ class MainActivity : ComponentActivity(), HostBridge {
 
     override fun onResume() {
         super.onResume()
+        Env.foreground.value = true
         Actions.onReturn()
         immersive()
+    }
+
+    override fun onPause() {
+        Env.foreground.value = false
+        super.onPause()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

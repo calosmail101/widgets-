@@ -40,6 +40,9 @@ object Env {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     var host: HostBridge? = null
 
+    /** true con el launcher en primer plano: fuera de ahí no se muestrea ni se anima nada. */
+    val foreground = kotlinx.coroutines.flow.MutableStateFlow(true)
+
     /** En pruebas: dibuja los iconos en el mismo hilo para que salgan en las capturas. */
     var syncIcons = false
     val ready get() = ::ctx.isInitialized

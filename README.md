@@ -6,7 +6,8 @@ entera con **sticks, cruceta y botones**, sin tocar la pantalla. También funcio
 
 ## Qué hace
 
-- **Inicio** con reloj grande, tarjeta para continuar con la última app, batería, espacio libre y una barra de apps fijadas.
+- **Inicio** con reloj grande, tarjeta para continuar con la última app, estadísticas en tiempo real y una barra de apps fijadas.
+- **Estadísticas** a elegir: batería, consumo en vatios, temperaturas, CPU, memoria, almacenamiento interno y tarjeta SD, ping, Wi‑Fi y refresco de pantalla; en tres tamaños y cuatro estilos (segmentos, anillo, gráfica, número).
 - **Cajón de apps** con categorías automáticas (Juegos, Emuladores, Multimedia, Apps, Sistema), apps ocultas y búsqueda.
 - **Iconos a tu gusto**: paquetes de iconos de Play Store (formato estándar ADW/Nova), una imagen de la galería por app, forma, tamaño y nombre.
 - **Reloj** en cuatro estilos (matriz de puntos, segmentos, grande, fino), color de acento, fecha y segundos.

@@ -97,11 +97,16 @@ private fun sections(): List<Section> = listOf(
         ),
     ),
     Section(
-        "Tarjetas", "Los widgets de Android se añaden en Inicio, página 02 (R1)",
+        "Estadísticas", "En Inicio: sube a una tarjeta y pulsa A para cambiarla, moverla o quitarla",
         listOf(
-            Toggle("Continuar con la última app", { it.look.cardContinue }) { c, v -> c.look { copy(cardContinue = v) } },
-            Toggle("Batería", { it.look.cardBattery }) { c, v -> c.look { copy(cardBattery = v) } },
-            Toggle("Almacenamiento", { it.look.cardStorage }) { c, v -> c.look { copy(cardStorage = v) } },
+            Choice("Tamaño", { STAT_SIZES }, { it.look.statSize }) { c, v -> c.look { copy(statSize = v) } },
+            Choice("Estilo", { STAT_STYLES }, { it.look.statStyle }) { c, v -> c.look { copy(statStyle = v) } },
+            Act("Añadir estadística", { "${Env.cfg.value.look.stats.size} en Inicio" }) {
+                Env.nav.push(metricPicker("Añadir a Inicio") { m -> Env.cfg.update { c -> c.look { copy(stats = stats + m.name) } } })
+            },
+            Act("Ponerlas todas") { Env.cfg.update { c -> c.look { copy(stats = dev.palanca.launcher.system.Metric.entries.map { it.name }) } } },
+            Act("Quitar todas") { Env.cfg.update { c -> c.look { copy(stats = emptyList()) } } },
+            Toggle("Tarjeta para continuar con la última app", { it.look.cardContinue }) { c, v -> c.look { copy(cardContinue = v) } },
         ),
     ),
     Section(

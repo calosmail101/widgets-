@@ -49,8 +49,10 @@ data class Look(
     val drawerCols: Int = 7,
     val dockSize: Int = 84,
     val cardContinue: Boolean = true,
-    val cardBattery: Boolean = true,
-    val cardStorage: Boolean = true,
+    /** Estadísticas de Inicio, en orden (nombres de Metric). */
+    val stats: List<String> = listOf("BATTERY", "STORAGE"),
+    val statSize: String = "auto",
+    val statStyle: String = "segmentos",
 )
 
 @Serializable

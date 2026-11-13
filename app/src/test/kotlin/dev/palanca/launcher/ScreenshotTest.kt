@@ -11,6 +11,9 @@ import dev.palanca.launcher.data.Usage
 import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.Actions
+import dev.palanca.launcher.system.Metric
+import dev.palanca.launcher.system.Reading
+import dev.palanca.launcher.system.Telemetry
 import dev.palanca.launcher.ui.Battery
 import dev.palanca.launcher.ui.DrawerScreen
 import dev.palanca.launcher.ui.HomeScreen
@@ -69,6 +72,14 @@ class ScreenshotTest {
         fixedNow = LocalDateTime.of(2026, 11, 12, 21, 47, 5)
         fixedBattery = Battery(82, false)
         Actions.storageOverride = 148_000_000_000L to 256_000_000_000L
+        Telemetry.fixed = mapOf(
+            Metric.BATTERY to Reading("82", "%", 0.82f), Metric.POWER to Reading("6.4", "W", 0.43f, "ahora"),
+            Metric.BAT_TEMP to Reading("34", "°C", 0.47f), Metric.CPU_TEMP to Reading("58", "°C", 0.55f),
+            Metric.GPU_TEMP to Reading("54", "°C", 0.48f), Metric.CPU_FREQ to Reading("2.4", "GHz", 0.62f, "núcleo más rápido"),
+            Metric.RAM to Reading("5.2", "GB", 0.43f, "de 12 GB"), Metric.STORAGE to Reading("148", "GB", 0.42f, "libres"),
+            Metric.SD to Reading("311", "GB", 0.39f, "libres"), Metric.PING to Reading("23", "ms", 0.12f, "bueno"),
+            Metric.WIFI to Reading("-52", "dBm", 0.76f, "866 Mbps"), Metric.REFRESH to Reading("120", "Hz", 1f, "refresco"),
+        )
         Env.apps.apps.value = apps
         val dolphin = apps.first { it.label == "Dolphin" }
         Env.cfg.update { it.copy(pinnedInit = true, pinned = listOf("YouTube", "Play Store", "Chrome", "RetroArch", "Dolphin", "Spotify", "Ajustes").map { n -> apps.first { a -> a.label == n }.key }) }
@@ -88,6 +99,25 @@ class ScreenshotTest {
     @Test fun inicioSegmentos() {
         Env.cfg.update { it.look { copy(clockStyle = "segmentos", accent = 0xFF5FE3B0, iconShape = "chaflan", wallpaper = "negro") } }
         shot("1b-inicio-segmentos", pad = listOf(Btn.UP))
+    }
+    private fun stats(style: String, vararg metrics: Metric) =
+        Env.cfg.update { it.look { copy(statStyle = style, stats = metrics.map { m -> m.name }) } }
+
+    @Test fun statsGrandes() {
+        stats("anillo", Metric.BATTERY, Metric.CPU_TEMP, Metric.STORAGE, Metric.SD)
+        shot("9a-stats-grandes-anillo", pad = listOf(Btn.UP, Btn.DOWN, Btn.RIGHT))
+    }
+    @Test fun statsMedianas() {
+        stats("grafica", Metric.BATTERY, Metric.POWER, Metric.CPU_TEMP, Metric.GPU_TEMP, Metric.RAM, Metric.PING, Metric.STORAGE, Metric.SD, Metric.REFRESH)
+        shot("9b-stats-medianas-grafica", pad = listOf(Btn.UP, Btn.DOWN, Btn.DOWN))
+    }
+    @Test fun statsMini() {
+        stats("segmentos", *Metric.entries.toTypedArray())
+        shot("9c-stats-mini-todas")
+    }
+    @Test fun statsMenu() {
+        stats("segmentos", Metric.BATTERY, Metric.STORAGE, Metric.SD, Metric.PING)
+        shot("9d-stats-menu", pad = listOf(Btn.UP, Btn.DOWN, Btn.A))
     }
     @Test fun cajon() = shot("2-cajon", DrawerScreen(), pad = listOf(Btn.RIGHT, Btn.RIGHT, Btn.DOWN))
     @Test fun menuApp() = shot("3-menu-app", DrawerScreen(), appMenu(apps[3]), pad = listOf(Btn.DOWN, Btn.DOWN))

@@ -69,15 +69,18 @@ class MenuScreen(
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).tap { Env.nav.pop() }) {
             Column(
                 Modifier.align(Alignment.CenterEnd).width(430.dp).fillMaxHeight().background(P.Bg)
-                    .tap { }.padding(start = 28.dp, end = 28.dp, top = 30.dp, bottom = 24.dp),
+                    .tap { }.padding(start = 22.dp, end = 22.dp, top = 30.dp, bottom = 24.dp),
             ) {
                 T(index, 14, LocalAccent.current, FontWeight.Bold, mono = true)
                 Spacer(Modifier.height(6.dp))
                 T(title, 26, weight = FontWeight.Medium)
                 Box(Modifier.padding(top = 16.dp, bottom = 14.dp).fillMaxWidth().height(1.dp).background(P.Line))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    list.forEachIndexed { i, item ->
-                        ListRow(item.label, item.value, i == sel.coerceIn(0, list.lastIndex), Modifier.tap { sel = i; run(item) }, height = 50.dp)
+                val current = sel.coerceIn(0, (list.size - 1).coerceAtLeast(0))
+                val state = rememberLazyListState()
+                LaunchedEffect(current) { if (list.isNotEmpty()) state.animateScrollToItem((current - 4).coerceAtLeast(0)) }
+                LazyColumn(Modifier.weight(1f), state = state, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    itemsIndexed(list) { i, item ->
+                        ListRow(item.label, item.value, i == current, Modifier.tap { sel = i; run(item) }, height = 50.dp)
                     }
                 }
                 HintBar(listOf("A" to "Elegir", "B" to "Cerrar"))
