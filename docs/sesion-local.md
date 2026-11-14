@@ -4,7 +4,7 @@ Este documento tiene dos lectores:
 
 - **Tú**, para preparar el portátil y la consola y arrancar la sesión (partes 1 y 2).
 - **La sesión local de Claude Code**, que no recuerda nada de la conversación en la nube: todo lo que
-  necesita saber está aquí (partes 3 a 8).
+  necesita saber está aquí (partes 3 a 9).
 
 Lo que no he podido comprobar desde la nube va marcado como **sin verificar**. La sesión local debe
 comprobarlo en la consola antes de darlo por bueno.
@@ -24,7 +24,10 @@ comprobarlo en la consola antes de darlo por bueno.
    - Carpeta con tus juegos (por sistema, si ya los tienes ordenados).
    - Carpeta de Lossless Scaling en Steam (donde está `Lossless.dll`); suele ser
      `C:\Program Files (x86)\Steam\steamapps\common\Lossless Scaling`.
-6. Un lector de tarjetas para la microSD (para la prueba de capacidad de la etapa 0).
+6. Un lector de tarjetas para la microSD (para la prueba de capacidad de la etapa 0 y para copiar
+   la biblioteca de juegos, que por lector va mucho más rápido que por ADB).
+7. Si Windows no reconoce la consola al conectarla, la sesión instalará el **Google USB Driver**
+   oficial (`developer.android.com`).
 
 ### En la Pocket
 
@@ -41,6 +44,9 @@ comprobarlo en la consola antes de darlo por bueno.
 5. En la notificación de USB de la consola elige **Transferencia de archivos**.
 6. Heaven ya instalado y elegido como app de inicio (lo está).
 7. El servicio de accesibilidad de Heaven activado (Custom › Mandos › Puntero con mando).
+8. Heaven sin restricciones de batería (Ajustes › Apps › Heaven › Batería › Sin restricciones), para
+   que Android no cierre el puntero ni las estadísticas en juego.
+9. Sesión de Google iniciada en Play Store (varias apps salen de ahí).
 
 ### Lo que solo haces tú
 
@@ -75,6 +81,28 @@ consola conectada por USB-C y la depuración USB ya autorizada.
 Antes de descargar nada, enséñame la lista con sus fuentes y espera a que la apruebe.
 ```
 
+### Si la sesión se corta o abres una nueva
+
+La sesión va apuntando lo que hace en `C:\Pocket\progreso.md`. Para retomar, abre otra sesión local
+en la misma carpeta y pega:
+
+```text
+Lee widgets-/docs/sesion-local.md y progreso.md en esta carpeta y continúa la configuración de mi
+Retroid Pocket 6 desde donde quedó. Comprueba primero con adb devices que la consola sigue conectada.
+```
+
+### Reparto recomendado (no hace falta hacerlo todo de una vez)
+
+| Sesión | Etapas | Lo que te toca a ti |
+|---|---|---|
+| A | 0, 1, 2 e investigación de Heaven (parte 6) | Lanzar H2testw, aceptar avisos, cambiar mosaicos cuando te lo pida |
+| B | 3 y 4 (drivers y PS2) | Dar la ruta de BIOS y de Lossless Scaling, probar un juego |
+| C | 5, 6 y 7 (PC, frontends, emuladores) | Iniciar sesión en Steam/Epic, elegir frontend, dar la ruta de los juegos |
+| D | 8 (streaming) | Iniciar sesión en Tailscale y PSN, emparejar con el PIN |
+| E | 9 y 10 (ports y dejar Heaven a punto) | Probar y decidir qué se queda |
+
+H2testw tarda horas: mientras corre se puede avanzar con las etapas 1 y 2, que no usan la tarjeta.
+
 ---
 
 ## 3. Reglas de trabajo para la sesión local
@@ -96,6 +124,13 @@ Antes de descargar nada, enséñame la lista con sus fuentes y espera a que la a
 9. Al acabar cada etapa: qué quedó listo, qué debe probar el usuario, problemas encontrados.
 10. Al final: un resumen con todo lo instalado, versiones, driver por app y ajustes clave, guardado
     en `C:\Pocket\resumen.md`.
+11. **Diario de progreso**: tras cada paso terminado, añade una línea a `C:\Pocket\progreso.md`
+    (fecha, etapa, qué se hizo, versión instalada, qué queda). Es lo que permite retomar si la
+    sesión se corta.
+12. **No desinstales una app para reinstalarla** sin preguntar: desinstalar borra sus datos
+    (partidas, configuración). Si una instalación falla por firma distinta, para y pregunta.
+13. Todo lo descargado se guarda en `C:\Pocket\descargas\<etapa>` con su nombre original, y se
+    comprueba el hash cuando el proyecto lo publica.
 
 ---
 
@@ -231,9 +266,24 @@ Vita → T30; GameCube/Wii y 3DS → driver del sistema.
 - Con ES‑DE: su carpeta en la memoria interna.
 - El usuario elige uno. Después, en Heaven: X sobre el botón de jugar › elegir ese frontend.
 
+#### Copiar la biblioteca de juegos
+
+1. Averiguar la ruta real de la tarjeta: `adb shell sm list-volumes public` (será algo como
+   `/storage/XXXX-XXXX`).
+2. **Convertir en la G14 antes de copiar**, para ahorrar espacio: PS1, PS2, Dreamcast y Saturn a CHD
+   con `chdman` (viene con MAME, de `mamedev.org`); GameCube y Wii a RVZ con Dolphin para Windows.
+   Switch se queda en NSP/XCI. Conservar los originales hasta comprobar que la copia arranca.
+3. **Bibliotecas grandes**: apagar la consola, pasar la tarjeta al lector de la G14 y copiar con
+   `robocopy` (reanuda si se corta y deja registro). **Archivos sueltos**: `adb push`.
+4. Antes de copiar, enseñar al usuario cuánto ocupa cada sistema y cuánto queda libre en la tarjeta.
+5. Después de copiar, comparar número de archivos y tamaño total por carpeta.
+6. Carátulas: usar el descargador que traiga el frontend elegido. Si pide cuenta (ScreenScraper u
+   otra), la cuenta y la contraseña las pone el usuario.
+
 ### Etapa 7 · Resto de emuladores
 
-- Switch: **Eden**; **Citron Neo** de respaldo.
+- Switch: **Eden**; **Citron Neo** de respaldo. Las claves (`prod.keys`) y el firmware los aporta el
+  usuario, volcados de su propia Switch; la sesión solo los coloca donde el emulador los pide.
 - GameCube/Wii: **Dolphin** (Vulkan 3x, Ubershaders híbridos, compilar shaders antes).
 - 3DS: **Azahar**. Vita: **Vita3K** con Turnip. PSP: **PPSSPP** (4x). PS1: **DuckStation**.
 - **RetroArch AArch64** (Mupen64Plus, Flycast, Beetle Saturn, melonDS).
@@ -249,7 +299,20 @@ Vita → T30; GameCube/Wii y 3DS → driver del sistema.
 - PS5: comparar **PS Remote Play** oficial, **chiaki‑ng** y **PXPlay** (de pago; su estado actual está
   **sin verificar**). El usuario elige.
 - En la G14: límite de batería al 80 % y sin suspensión cuando esté enchufada.
-- Probar Wake‑on‑LAN desde Artemis.
+- Probar Wake‑on‑LAN desde Artemis. La G14 no tiene Ethernet y despertar un portátil por Wi‑Fi no
+  suele funcionar: **sin verificar**. Si no funciona, la alternativa es dejarla encendida y enchufada
+  con la tapa abierta, o encenderla a mano.
+- Pasos que solo puede hacer el usuario: iniciar sesión en Tailscale en los dos equipos (misma
+  cuenta), escribir en Apollo el PIN que muestra Artemis, activar «Uso a distancia» en la PS5
+  (Ajustes › Sistema › Uso a distancia) e iniciar sesión en PSN.
+- Probar primero en casa por Wi‑Fi de 5 GHz o 6 GHz y después fuera de casa por Tailscale; anotar
+  latencia y bitrate que aguanta cada caso.
+
+#### Partidas guardadas (opcional, se decide con el usuario)
+
+- **Syncthing‑Fork** en la Pocket y Syncthing en la G14, sincronizando solo las carpetas de partidas
+  de cada emulador hacia una carpeta de copia en la G14. Nunca sincronizar ROMs ni shaders.
+- Sin sincronización: copia manual de las carpetas de partidas a `/Backups` de la tarjeta al terminar.
 
 ### Etapa 9 · Ports nativos (sesión aparte)
 
@@ -258,6 +321,21 @@ Vita → T30; GameCube/Wii y 3DS → driver del sistema.
 - GTA IV, Black Ops 2 (T6 Requiem), Skate 3, Forza Horizon 2: **sin verificar** que existan ports
   fiables; buscarlos y confirmarlos antes de contar con ellos.
 - Minecraft Java con mods (Zalith Launcher 2) y Fortnite desde Play Store.
+
+### Etapa 10 · Dejar Heaven a punto
+
+Con todo instalado, y con el usuario mirando la consola (o por scrcpy):
+
+1. Botón de jugar: X sobre el botón › elegir el frontend que se quedó.
+2. Todas las apps: ocultar lo que no se usa (X sobre la app › Ocultar) y revisar que cada emulador
+   cayó en la categoría «Emuladores»; corregir con X › Categoría.
+3. Fijar en el carrusel lo que el usuario usa a diario (SELECT sobre la app).
+4. Música de fondo: copiar las canciones del usuario a `/Musica` de la tarjeta y elegirlas en
+   Custom › Sonido.
+5. BOOST: comprobar que aparece la fila de ClusterTune ahora que está instalado.
+6. Volver a detectar el modo de los gatillos (ventana de gatillos › X para olvidar › seguir los tres
+   pasos) y, si la parte 6.1 dio resultado, anotar la clave del estilo de mando.
+7. Exportar la copia completa (Custom › Copia de seguridad) a `/Backups`.
 
 ---
 
@@ -388,3 +466,21 @@ interno. Antes de copiar, enseñar al usuario cuánto ocupa cada sistema y cuán
    `/Backups` de la tarjeta.
 4. El usuario lleva `hallazgos-heaven.md` a la sesión de la nube para que Heaven integre el estilo de
    mando, los gatillos y los FPS con datos reales.
+
+---
+
+## 9. Problemas habituales
+
+| Síntoma | Qué hacer |
+|---|---|
+| `adb devices` no muestra nada | Cambiar de cable (muchos USB‑C son solo de carga) y de puerto; modo USB en «Transferencia de archivos»; instalar el Google USB Driver |
+| Sale `unauthorized` | Aceptar el aviso en la pantalla de la consola. Si no aparece: Opciones de desarrollador › Revocar autorizaciones de depuración USB, y reconectar |
+| Sale `offline` | `adb kill-server`, reconectar el cable |
+| La consola se bloquea a mitad de un paso | Activar «Pantalla activa mientras se carga» |
+| Play Protect avisa al instalar un APK | Lo acepta el usuario en pantalla; es normal en apps de fuera de Play Store |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | La app instalada tiene otra firma. No desinstalar sin preguntar (se pierden los datos) |
+| Un emulador no ve la tarjeta | Darle acceso a la carpeta desde su propio selector de carpetas; Android 13 no deja a las apps entrar en `Android/data` de otras |
+| Falta espacio en interno | Enseñar al usuario qué ocupa más (`adb shell du -sh /sdcard/*`) y decidir con él qué pasa a la tarjeta |
+| Heaven deja de responder al mando o el puntero desaparece | Reactivar el servicio de accesibilidad de Heaven y comprobar que no tiene restricción de batería |
+| Algo de Heaven falla | Custom › Sistema › Exportar diagnóstico, y guardar el archivo junto a `hallazgos-heaven.md` |
+
