@@ -96,7 +96,7 @@ Retroid Pocket 6 desde donde quedó. Comprueba primero con adb devices que la co
 | Sesión | Etapas | Lo que te toca a ti |
 |---|---|---|
 | A | 0, 1, 2 e investigación de Heaven (parte 6) | Lanzar H2testw, aceptar avisos, cambiar mosaicos cuando te lo pida |
-| B | 3 y 4 (drivers y PS2) | Dar la ruta de BIOS y de Lossless Scaling, probar un juego |
+| B | 3 y 4 (drivers y Lossless en ARMSX2) | Aprobar la tabla de drivers, dar la ruta de Lossless Scaling, probar un juego |
 | C | 5, 6 y 7 (PC, frontends, emuladores) | Iniciar sesión en Steam/Epic, elegir frontend, dar la ruta de los juegos |
 | D | 8 (streaming) | Iniciar sesión en Tailscale y PSN, emparejar con el PIN |
 | E | 9 y 10 (ports y dejar Heaven a punto) | Probar y decidir qué se queda |
@@ -220,32 +220,62 @@ root, y lo que usa Heaven para cambiar modos. Desde ADB no hace falta: `adb shel
   al que un underclock moderado dejó de bastarle en el núcleo PPSSPP de RetroArch tras una
   actualización; por eso se empieza en Stock y se compara después.
 
-### Etapa 3 · Drivers Turnip
+### Etapa 3 · Drivers gráficos: buscar el mejor actual para cada uso
 
-Descargar en zip **sin descomprimir**, de los repositorios oficiales:
+**No hay lista cerrada.** La sesión local tiene que investigar, en el momento de hacerlo, cuál es el
+mejor driver para **esta consola** (Snapdragon 8 Gen 2 / QCS8550, Adreno 740, Android 13) y para
+**cada uso** que le va a dar el usuario. Las versiones cambian cada pocas semanas, así que lo que
+valía en noviembre de 2026 puede estar superado.
 
-- Mr Purple T30 y T25/T26 (`MrPurple666/purple-turnip`)
-- StevenMXZ v27.0.0‑R1 (`StevenMXZ/Adreno-Tools-Drivers`)
-- Balemuni Apex (`Balemuni/Balemunis-Aurora`)
-- ARMSX2 Turnip (`bmdhacks/armsx2-turnip`)
-- K11MCH1 v26.0.0 R8 (`K11MCH1/AdrenoToolsDrivers`), de respaldo
+Usos que hay que cubrir, cada uno con su recomendación:
 
-Uso previsto: Switch → el que recomiende Eden, o T30; PS2 → ARMSX2 Turnip; PC → T25/T26;
-Vita → T30; GameCube/Wii y 3DS → driver del sistema.
+| Uso | App |
+|---|---|
+| PS2 | ARMSX2 (ya instalado) |
+| Switch | Eden (y Citron Neo de respaldo) |
+| Juegos de PC | GameNative, GameHub, DroidDeck |
+| Vita | Vita3K |
+| GameCube / Wii | Dolphin |
+| 3DS | Azahar |
+| Wii U | Cemu |
+| Xbox original | hakuX |
 
-### Etapa 4 · PS2 (prioridad alta)
+Cómo decidir:
 
-- **ARMSX2** desde su GitHub (la de Play Store no trae generación de fotogramas). Versión de
-  referencia: 2.6.6.8.4 o más nueva.
-- Carpeta de datos `ARMSX2/` en la raíz del almacenamiento interno. BIOS en `ROMs/BIOS`, juegos en
-  `ROMs/ps2` en formato CHD.
-- Vulkan con ARMSX2 Turnip; escalado 3x global; memory card en modo carpeta; parches de panorámico y
-  60 fps por juego.
-- Atajos: menú = atrás; L3+R guardar; L3+L1 cargar; L3+R2 avance rápido; L3+Y cerrar.
-- Importar `Lossless.dll` desde la carpeta de Steam del usuario y configurar la generación adaptativa.
-- Modo de la consola en **Performance** para PS2.
-- **NetherSX2** solo como respaldo si un juego falla (una guía todavía lo prefiere).
-- Prueba del usuario: un juego con y sin generación de fotogramas.
+1. Mirar primero qué recomienda **el propio proyecto** de cada emulador (su wiki, su README, sus
+   notas de versión o su Discord oficial) para Adreno 740 en la versión actual.
+2. Mirar las últimas versiones publicadas en los repositorios de drivers y sus notas, buscando
+   mención expresa de Adreno 740 / 8 Gen 2 y de regresiones.
+3. Contrastar con informes recientes de usuarios de Retroid Pocket 6 u otros equipos con 8 Gen 2.
+4. Para cada uso, decidir entre un driver Turnip y **el driver del sistema** (a veces el de fábrica
+   es el mejor; no asumir que Turnip gana siempre).
+5. Presentar al usuario una tabla: uso → driver recomendado → versión y fecha → fuente exacta →
+   por qué → alternativa de respaldo. Esperar aprobación antes de descargar.
+6. Descargar en zip **sin descomprimir**, solo del repositorio oficial de cada autor, y guardarlos en
+   `/Drivers` de la tarjeta.
+7. Asignar el driver dentro de cada emulador y comprobarlo con un juego. Si rinde peor o da fallos
+   gráficos, probar el de respaldo y anotar el resultado.
+8. Dejar la tabla final en `C:\Pocket\resumen.md`.
+
+Puntos de partida para buscar (son repositorios conocidos en noviembre de 2026, **no** una decisión;
+puede haber otros mejores): `MrPurple666/purple-turnip`, `StevenMXZ/Adreno-Tools-Drivers`,
+`Balemuni/Balemunis-Aurora`, `bmdhacks/armsx2-turnip`, `K11MCH1/AdrenoToolsDrivers`.
+
+### Etapa 4 · PS2: solo añadir Lossless a ARMSX2
+
+**ARMSX2 ya está instalado y configurado por el usuario. No reinstalarlo ni tocar su configuración,
+BIOS, juegos, atajos ni memory cards.** Lo único que hay que hacer:
+
+1. Comprobar qué versión de ARMSX2 hay instalada y de dónde viene
+   (`adb shell dumpsys package` del paquete: versión e instalador).
+2. Comprobar que esa versión tiene la opción de importar `Lossless.dll`. Si no la tiene (según lo
+   investigado, la edición de Play Store no trae generación de fotogramas; **sin verificar** en la
+   versión actual), parar y explicárselo al usuario antes de cambiar nada.
+3. Copiar `Lossless.dll` desde la carpeta de Lossless Scaling de Steam en la G14 (la ruta la da el
+   usuario) a la consola, e importarlo desde el menú de ARMSX2.
+4. Activar la generación de fotogramas y dejar anotado cómo se enciende y se apaga.
+5. Aplicar a ARMSX2 el driver que salga de la etapa 3, solo si el usuario lo aprueba.
+6. Prueba del usuario: un juego con y sin generación de fotogramas.
 
 ### Etapa 5 · Juegos de PC
 
