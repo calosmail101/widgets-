@@ -121,7 +121,7 @@ object DeviceModes {
     }
 
     /** Claves que cambian solas y no interesan (cachés, relojes, brillo, volumen…). */
-    private val NOISE = Regex("cache_key|time|uptime|brightness|volume|battery|boot|last_|count|seq|pid|netstats|wifi|bluetooth|usb|zen_", RegexOption.IGNORE_CASE)
+    private val NOISE = Regex("cache_key|time|uptime|brightness|volume|battery|last_|netstats", RegexOption.IGNORE_CASE)
 
     fun diff(before: Map<String, String>, after: Map<String, String>): List<Triple<String, String, String>> =
         after.filter { (k, v) -> before[k] != null && before[k] != v && !NOISE.containsMatchIn(k) }

@@ -126,8 +126,8 @@ class DrawerScreen : Screen, Closable {
             if (shownTab != current) { shownTab = current; grid.scrollToItem(target) } else grid.animateScrollToItem(target)
         }
 
-        // Ventana de cristal que nace del botón de todas las apps y se recoge en él.
-        Popup(TransformOrigin(0.31f, 0.6f), closing, { Env.nav.pop() }) {
+        // Ventana de cristal que sube desde debajo del carrusel (se abre bajando el stick) y se recoge ahí.
+        Popup(TransformOrigin(0.76f, 1f), closing, { Env.nav.pop() }) {
           Window(Modifier.align(Alignment.Center).fillMaxWidth(0.955f).fillMaxHeight(0.93f)) {
             Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
                 Glyph("L1")

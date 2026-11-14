@@ -138,7 +138,6 @@ class HomeScreen : Screen {
     private var zone by mutableIntStateOf(0) // 0 = carrusel · 1 = tarjetas · 2 = botones (jugar, todas)
     private var dock by mutableIntStateOf(-1) // -1 = todavía sin elegir: se usa la app del centro
     private var card by mutableIntStateOf(0)
-    private var button by mutableIntStateOf(0) // 0 = jugar · 1 = todas las apps
     private var widget by mutableIntStateOf(0)
 
     fun reset() { page = 0; zone = 0; dock = -1 }
@@ -182,13 +181,14 @@ class HomeScreen : Screen {
 
         when (zone) {
             2 -> when (e.btn) {
-                Btn.LEFT -> button = 0
-                Btn.RIGHT -> if (button == 0) button = 1 else if (pins.isNotEmpty()) zone = 0 else if (total > 0) zone = 1
+                Btn.RIGHT -> if (pins.isNotEmpty()) zone = 0 else if (total > 0) zone = 1
                 Btn.UP -> if (total > 0) zone = 1
-                Btn.DOWN, Btn.B -> if (pins.isNotEmpty()) zone = 0
-                Btn.A -> if (button == 1) Env.nav.push(DrawerScreen())
-                else playApp(cfg)?.let { Actions.launch(it, 0.18f to 0.62f) } ?: Env.nav.push(playAppPicker())
-                Btn.X -> if (button == 0) Env.nav.push(playAppPicker())
+                // Sin apps fijadas no hay carrusel: bajar abre directamente todas las apps.
+                Btn.DOWN -> if (pins.isNotEmpty()) zone = 0 else Env.nav.push(DrawerScreen())
+                Btn.B -> if (pins.isNotEmpty()) zone = 0
+                Btn.A -> playApp(cfg)?.let { Actions.launch(it, 0.18f to 0.62f) } ?: Env.nav.push(playAppPicker())
+                Btn.X -> Env.nav.push(playAppPicker())
+                Btn.LEFT -> Unit
                 else -> return false
             }
             1 -> when (e.btn) {
@@ -200,14 +200,14 @@ class HomeScreen : Screen {
                     else -> zone = if (pins.isEmpty()) 2 else 0
                 }
                 // Desde la columna izquierda de las tarjetas se pasa a los botones.
-                Btn.LEFT -> if (stat < 0 || stat % cols == 0) { zone = 2; button = 1 } else card--
+                Btn.LEFT -> if (stat < 0 || stat % cols == 0) zone = 2 else card--
                 Btn.RIGHT -> if (stat >= 0) card = offset + gridMove(stat, stats.size, cols, Btn.RIGHT)
                 Btn.A, Btn.X -> if (stat < 0) Actions.lastApp()?.let { Actions.launch(it) } else Env.nav.push(statMenu(stats[stat], ::followStat))
                 Btn.B -> zone = if (pins.isEmpty()) 2 else 0
                 else -> return false
             }
             else -> when (e.btn) {
-                Btn.LEFT -> if (dock > 0) dock-- else { zone = 2; button = 1 }
+                Btn.LEFT -> if (dock > 0) dock-- else zone = 2
                 Btn.RIGHT -> dock = (dock + 1).coerceAtMost(pins.lastIndex)
                 Btn.UP -> zone = if (total > 0) 1 else 2
                 Btn.DOWN -> Env.nav.push(DrawerScreen())
@@ -309,11 +309,7 @@ class HomeScreen : Screen {
                             }
                             Spacer(Modifier.height(24.dp))
                             Piece("botones") {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    PlayButton(apps.firstOrNull { it.key == cfg.playApp }, zone == 2 && button == 0)
-                                    Spacer(Modifier.width(18.dp))
-                                    AllAppsButton(zone == 2 && button == 1)
-                                }
+                                PlayButton(apps.firstOrNull { it.key == cfg.playApp }, zone == 2)
                             }
                         }
                         Column(Modifier.width(RIGHT_COLUMN).fillMaxHeight()) {
@@ -326,9 +322,8 @@ class HomeScreen : Screen {
                     HintBar(
                         when {
                             zone == 1 -> listOf("A" to "Abrir / cambiar", "B" to "Volver")
-                            zone == 2 && button == 0 -> listOf("A" to "Jugar", "X" to "Elegir app")
-                            zone == 2 -> listOf("A" to "Todas las apps")
-                            else -> listOf("A" to "Abrir", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "CNTRL", "START" to "Custom")
+                            zone == 2 -> listOf("A" to "Jugar", "X" to "Elegir app")
+                            else -> listOf("A" to "Abrir", "▼" to "Todas las apps", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "CNTRL", "START" to "Custom")
                         },
                     )
                 } else {
@@ -418,7 +413,7 @@ class HomeScreen : Screen {
             // Alto obligatorio: el botón conserva su forma con cualquier fuente o tamaño de texto.
             Modifier.requiredHeight(98.dp).brackets(selected, P.Ink, gap = 4.dp, radius = 49.dp).background(accent, CircleShape)
                 .tap(onLong = { Env.nav.push(playAppPicker()) }) {
-                    zone = 2; button = 0
+                    zone = 2
                     app?.let { Actions.launch(it, 0.18f to 0.62f) } ?: Env.nav.push(playAppPicker())
                 }.padding(horizontal = 32.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -427,20 +422,6 @@ class HomeScreen : Screen {
             if (app != null) {
                 Spacer(Modifier.width(20.dp))
                 AppIcon(app, 60.dp)
-            }
-        }
-    }
-
-    /** Botón fijo de todas las apps: una burbuja de cristal con la rejilla de puntos. */
-    @Composable
-    private fun AllAppsButton(selected: Boolean) {
-        Box(
-            Modifier.requiredSize(98.dp).brackets(selected, LocalAccent.current, gap = 4.dp, radius = 49.dp).glassPanel(CircleShape)
-                .tap { zone = 2; button = 1; Env.nav.push(DrawerScreen()) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                repeat(3) { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { repeat(3) { Dot(P.Ink, 7.dp) } } }
             }
         }
     }

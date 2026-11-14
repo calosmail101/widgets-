@@ -350,7 +350,7 @@ fun Segments(fraction: Float, color: Color, modifier: Modifier = Modifier, count
 @Composable
 fun Glyph(name: String, primary: Boolean = false) {
     val accent = LocalAccent.current
-    val arrow = name == "◀" || name == "▶"
+    val arrow = name == "◀" || name == "▶" || name == "▼"
     val round = name.length == 1
     val shape = if (round) CircleShape else RoundedCornerShape(7.dp)
     val ink = if (primary) P.OnAccent else P.Dim
@@ -365,7 +365,8 @@ fun Glyph(name: String, primary: Boolean = false) {
             // Las flechas se dibujan: los caracteres ◀ ▶ nunca quedan centrados en un círculo.
             Canvas(Modifier.size(9.dp)) {
                 val path = Path().apply {
-                    if (name == "◀") { moveTo(size.width * 0.85f, 0f); lineTo(size.width * 0.85f, size.height); lineTo(0.05f * size.width, size.height / 2) }
+                    if (name == "▼") { moveTo(0f, size.height * 0.15f); lineTo(size.width, size.height * 0.15f); lineTo(size.width / 2, size.height * 0.95f) }
+                    else if (name == "◀") { moveTo(size.width * 0.85f, 0f); lineTo(size.width * 0.85f, size.height); lineTo(0.05f * size.width, size.height / 2) }
                     else { moveTo(size.width * 0.15f, 0f); lineTo(size.width * 0.15f, size.height); lineTo(0.95f * size.width, size.height / 2) }
                     close()
                 }
@@ -452,15 +453,23 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.waterSphere(center:
 @Composable
 fun DropSlider(fraction: Float, color: Color, modifier: Modifier = Modifier) {
     val target = fraction.coerceIn(0f, 1f)
-    val at by animateFloatAsState(target, spring(dampingRatio = 0.55f, stiffness = 300f), label = "drop")
-    val moving = kotlin.math.abs(at - target) > 0.0015f
-    val lift by animateFloatAsState(if (moving) 1f else 0f, tween(if (moving) 90 else 320), label = "lift")
+    val at by animateFloatAsState(target, spring(dampingRatio = 0.8f, stiffness = 170f), label = "drop")
+    // La línea sube al primer cambio y se queda arriba mientras sigan llegando cambios; solo baja
+    // cuando el control lleva un momento quieto. Así la esfera planea en vez de dar un salto por paso.
+    val lift = remember { Animatable(0f) }
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(target) {
+        if (!started) { started = true; return@LaunchedEffect }
+        lift.animateTo(1f, tween(140))
+        kotlinx.coroutines.delay(520)
+        lift.animateTo(0f, tween(420))
+    }
     Canvas(modifier.height(24.dp)) {
         val r = 8.5.dp.toPx()
         val left = r; val right = size.width - r
         val base = size.height * 0.56f
         val x = left + (right - left) * at.coerceIn(-0.04f, 1.04f)
-        val rise = 5.dp.toPx() * lift; val spread = 28.dp.toPx()
+        val rise = 5.dp.toPx() * lift.value; val spread = 30.dp.toPx()
         fun y(px: Float): Float { val d = (px - x) / spread; return base - rise * kotlin.math.exp(-d * d) }
         val filled = Path(); val rest = Path()
         val steps = if (rise < 0.2f) 2 else 56
@@ -473,7 +482,7 @@ fun DropSlider(fraction: Float, color: Color, modifier: Modifier = Modifier) {
         drawPath(rest, P.Ink.copy(alpha = 0.22f), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
         drawPath(filled, color, style = Stroke(3.6.dp.toPx(), cap = StrokeCap.Round))
         // Se alarga un poco en la dirección del movimiento y recupera la forma al llegar.
-        waterSphere(Offset(x, y(x)), r, color, 1f + (kotlin.math.abs(at - target) * 6f).coerceAtMost(0.28f))
+        waterSphere(Offset(x, y(x)), r, color, 1f + (kotlin.math.abs(at - target) * 5f).coerceAtMost(0.22f))
     }
 }
 
@@ -492,17 +501,31 @@ fun DropSwitch(on: Boolean) {
     }
 }
 
-/** Engranaje sencillo en dibujo de línea: un aro y seis dientes anchos. */
+/** Tuerca en dibujo de línea: un hexágono con su agujero. Mismo grosor de trazo que el resto de iconos. */
 @Composable
 fun GearGlyph(color: Color, modifier: Modifier = Modifier) = Canvas(modifier) {
     val c = Offset(size.width / 2, size.height / 2)
-    val r = size.minDimension / 2
-    for (i in 0 until 6) {
-        val a = (i * 60.0 + 30) * kotlin.math.PI / 180
-        val dir = Offset(kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat())
-        drawLine(color, c + dir * (r * 0.62f), c + dir * (r * 0.92f), r * 0.34f, StrokeCap.Round)
+    val r = size.minDimension / 2 * 0.86f
+    val w = size.minDimension * 0.07f
+    val hex = Path().apply {
+        for (i in 0 until 6) {
+            val a = i * 60.0 * kotlin.math.PI / 180
+            val p = Offset(c.x + r * kotlin.math.cos(a).toFloat(), c.y + r * kotlin.math.sin(a).toFloat())
+            if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+        }
+        close()
     }
-    drawCircle(color, r * 0.56f, c, style = Stroke(r * 0.2f))
+    drawPath(hex, color, style = Stroke(w, join = StrokeJoin.Round))
+    drawCircle(color, r * 0.38f, c, style = Stroke(w))
+}
+
+/** Sacudida corta en horizontal cada vez que [trigger] cambia: "eso ya está elegido". */
+fun Modifier.shake(trigger: Int): Modifier = composed {
+    val x = remember { Animatable(0f) }
+    LaunchedEffect(trigger) {
+        if (trigger > 0) for (dx in listOf(-8f, 7f, -5f, 3f, 0f)) x.animateTo(dx, tween(42))
+    }
+    graphicsLayer { translationX = x.value * density }
 }
 
 /** Mando en dibujo de línea (para el estilo de botones). */

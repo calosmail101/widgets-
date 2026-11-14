@@ -71,6 +71,11 @@ El servicio también es el que permite abrir *Apps recientes* desde un atajo.
 - Cambiar el brillo necesita el permiso «Modificar ajustes del sistema»; el panel lo pide la primera vez.
 - El contenido de los widgets responde al toque (o al puntero), no al foco del mando.
 
+## Configurar la consola desde el PC
+
+La guía completa para la sesión local de Claude Code (portátil + consola por USB) está en
+[`docs/sesion-local.md`](docs/sesion-local.md).
+
 ## Compilar
 
 ```bash

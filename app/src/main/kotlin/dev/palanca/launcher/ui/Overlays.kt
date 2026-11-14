@@ -241,8 +241,8 @@ class QuickPanel : Screen, Closable {
 
     private fun openBox(name: String) {
         when (name) {
-            "mando" -> Env.nav.push(LearnedScreen("mando", "Estilo de mando", "Controller style", "Retro", "Xbox"))
-            "gatillos" -> Env.nav.push(LearnedScreen("gatillos", "Modo de los gatillos", "Trigger input mode", "Analógico", "Digital"))
+            "mando" -> Env.nav.push(LearnedScreen("mando", "Estilo de mando", "Controller style", listOf("Retro", "Xbox")))
+            "gatillos" -> Env.nav.push(LearnedScreen("gatillos", "Modo de los gatillos", "Trigger input mode", listOf("Analógico", "Digital", "Ambos")))
             "luces" -> if (DeviceModes.lightsSupported()) Env.nav.push(LightsScreen()) else Actions.toast("Esta consola no tiene luces configurables")
             else -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
         }
@@ -330,12 +330,12 @@ class QuickPanel : Screen, Closable {
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
-                HintBar(
-                    listOf("A" to "Elegir", "◀ ▶" to "Ajustar") + (if (console.isEmpty()) emptyList() else listOf("L1 R1" to "Cambiar de ventana")) + listOf("B" to "Cerrar"),
-                    Modifier.width(if (console.isEmpty()) 600.dp else 1102.dp).padding(horizontal = 14.dp),
-                )
             }
+            // La leyenda va donde la de Inicio (abajo a la derecha de la pantalla): la vista no tiene que buscarla.
+            HintBar(
+                listOf("A" to "Elegir", "◀ ▶" to "Ajustar") + (if (console.isEmpty()) emptyList() else listOf("L1 R1" to "Cambiar de ventana")) + listOf("B" to "Cerrar"),
+                Modifier.align(Alignment.BottomCenter).padding(start = 56.dp, end = 56.dp, bottom = 20.dp),
+            )
         }
     }
 
@@ -463,56 +463,69 @@ class LightsScreen : Screen, Closable {
 }
 
 /**
- * Un control de la consola con dos estados. La primera vez hay que "enseñárselo" a Heaven: se toma
- * una foto de los ajustes del sistema, se cambia el mosaico de Android y se compara. Después la
- * ventana simplemente alterna entre los dos estados.
+ * Un control de la consola con varios estados (estilo de mando, modo de gatillos). La primera vez
+ * hay que "enseñárselo" a Heaven: se pone el mosaico de Android en cada estado y se toma una foto de
+ * los ajustes del sistema; el ajuste que distingue todos los estados es el que se guarda.
+ * Después, la ventana muestra una casilla por estado: A elige la que tiene el foco.
  */
 class LearnedScreen(
-    private val id: String, private val title: String, private val tile: String,
-    private val nameA: String, private val nameB: String,
+    private val id: String, private val title: String, private val tile: String, private val names: List<String>,
 ) : Screen, Closable {
     override val overlay get() = true
     override var closing by mutableStateOf(false)
-    private var step by mutableIntStateOf(0) // 0 elegir modo actual · 1 esperando el cambio · 2 trabajando
-    private var currentIsA by mutableStateOf(true)
-    private var message by mutableStateOf("")
-    private var before: Map<String, String>? = null
+    private var cursor by mutableIntStateOf(0)
+    private var shakes by mutableIntStateOf(0)
+    private var busy by mutableStateOf(false)
+    private var note by mutableStateOf("")
+    private val photos = ArrayList<Map<String, String>>()
+    private var captured by mutableIntStateOf(0)
     private var value by mutableStateOf(Env.cfg.value.learned[id]?.let(DeviceModes::learnedValue))
+
+    init {
+        // El foco empieza en el estado que está activo ahora.
+        Env.cfg.value.learned[id]?.states()?.indexOfFirst { it.first == value }?.takeIf { it >= 0 }?.let { cursor = it }
+    }
 
     private fun learned() = Env.cfg.value.learned[id]
 
-    private fun toggle() {
+    private fun choose() {
         val l = learned() ?: return
-        val next = if (value == l.a) l.b else l.a
-        value = next
+        val pick = l.states().getOrNull(cursor) ?: return
+        // Ya estaba elegida: una sacudida corta en vez de hacer nada en silencio.
+        if (pick.first == value) { shakes++; return }
+        value = pick.first
         Env.scope.launch {
-            if (!withContext(Dispatchers.IO) { DeviceModes.setLearned(l, next) }) Actions.toast("La consola no aceptó el cambio")
+            if (!withContext(Dispatchers.IO) { DeviceModes.setLearned(l, pick.first) }) Actions.toast("La consola no aceptó el cambio")
         }
     }
 
-    private fun shoot() {
-        if (step == 2) return
-        val first = step == 0
-        step = 2; message = "Leyendo los ajustes de la consola…"
+    private fun capture() {
+        if (busy) return
+        busy = true; note = "Leyendo los ajustes de la consola…"
         Env.scope.launch {
             val photo = withContext(Dispatchers.IO) { DeviceModes.snapshot() }
-            if (photo == null) { step = 0; message = "No se pudieron leer los ajustes de esta consola."; return@launch }
-            if (first) {
-                before = photo; step = 1
-                message = "Ahora baja el panel de Android, cambia el mosaico «$tile» una vez y vuelve aquí."
+            busy = false
+            if (photo == null) { note = "No se pudieron leer los ajustes de esta consola."; return@launch }
+            photos += photo; captured = photos.size
+            if (photos.size < names.size) { note = ""; return@launch }
+            // Sirve el ajuste que tiene un valor distinto en cada uno de los estados.
+            val keys = photos[0].keys.filter { k -> photos.all { it[k] != null } && photos.map { it[k] }.toSet().size == names.size }
+            val candidates = DeviceModes.diff(photos[0], photos[1]).map { it.first }.filter { it in keys }
+            val hit = candidates.minByOrNull { key -> if (Regex("abxy|controller|gamepad|trigger|handle|style|input", RegexOption.IGNORE_CASE).containsMatchIn(key)) 0 else 1 }
+            if (hit == null) {
+                val partial = DeviceModes.diff(photos[0], photos[1]).joinToString { it.first.substringAfter(':') }.ifEmpty { "ninguno" }
+                photos.clear(); captured = 0
+                note = "No hay un ajuste que distinga los ${names.size} modos (cambiaron: $partial). Habrá que averiguarlo con la consola conectada al PC."
                 return@launch
             }
-            val changes = DeviceModes.diff(before!!, photo)
-            // Si cambian varias cosas, la que más se parece al nombre del mosaico.
-            val hit = changes.minByOrNull { (key, _, _) -> if (Regex("abxy|controller|gamepad|trigger|handle|style", RegexOption.IGNORE_CASE).containsMatchIn(key)) 0 else 1 }
-            if (hit == null) { step = 0; message = "No cambió ningún ajuste legible. Este modo habrá que averiguarlo con la consola conectada al PC."; return@launch }
-            val (key, old, new) = hit
             val l = dev.palanca.launcher.data.Learned(
-                kind = if (key.startsWith("prop:")) "propiedad" else "ajuste", table = key.substringBefore(':'), key = key.substringAfter(':'),
-                a = if (currentIsA) old else new, b = if (currentIsA) new else old, nameA = nameA, nameB = nameB,
+                kind = if (hit.startsWith("prop:")) "propiedad" else "ajuste", table = hit.substringBefore(':'), key = hit.substringAfter(':'),
+                values = photos.map { it[hit]!! }, names = names,
             )
             Env.cfg.update { it.copy(learned = it.learned + (id to l)) }
-            value = new; step = 0; message = "Aprendido: ${l.key}"
+            value = l.values.last(); cursor = names.lastIndex
+            photos.clear(); captured = 0
+            note = "Aprendido: ${l.key} (${l.values.joinToString(" / ")})"
         }
     }
 
@@ -521,10 +534,11 @@ class LearnedScreen(
         val l = learned()
         when (e.btn) {
             Btn.B -> Env.nav.pop()
-            Btn.LEFT, Btn.RIGHT -> if (l != null) toggle() else if (step == 0) currentIsA = !currentIsA
-            Btn.A -> if (l != null) toggle() else shoot()
+            Btn.LEFT -> if (l != null) cursor = (cursor - 1).coerceAtLeast(0)
+            Btn.RIGHT -> if (l != null) cursor = (cursor + 1).coerceAtMost(l.states().lastIndex)
+            Btn.A -> if (l != null) choose() else capture()
             // X olvida lo aprendido para poder repetir la detección.
-            Btn.X -> if (l != null) { Env.cfg.update { it.copy(learned = it.learned - id) }; step = 0; message = "" }
+            Btn.X -> if (l != null) { Env.cfg.update { it.copy(learned = it.learned - id) }; photos.clear(); captured = 0; note = "" }
             else -> Unit
         }
         return true
@@ -535,36 +549,50 @@ class LearnedScreen(
         val accent = LocalAccent.current
         val l = LocalCfg.current.learned[id]
         Popup(TransformOrigin(0.3f, 0.7f), closing, { Env.nav.pop() }) {
-            Window(Modifier.align(Alignment.Center).width(720.dp)) {
+            Window(Modifier.align(Alignment.Center).width(760.dp)) {
                 T(title, 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
                 if (l != null) {
+                    val states = l.states()
                     Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        listOf(l.a to l.nameA, l.b to l.nameB).forEach { (v, name) ->
-                            val picked = value == v
+                        states.forEachIndexed { i, (v, name) ->
+                            val active = value == v
+                            val focused = i == cursor
                             Box(
-                                Modifier.weight(1f).height(96.dp).brackets(picked, accent, gap = 3.dp, radius = 26.dp).glassPanel(RoundedCornerShape(26.dp))
-                                    .tap { if (!picked) toggle() },
+                                Modifier.weight(1f).height(96.dp)
+                                    .then(if (focused) Modifier.shake(shakes) else Modifier)
+                                    .brackets(focused, accent, gap = 3.dp, radius = 26.dp)
+                                    .then(if (active) Modifier.background(accent.copy(alpha = 0.24f), RoundedCornerShape(26.dp)) else Modifier)
+                                    .glassPanel(RoundedCornerShape(26.dp))
+                                    .tap { cursor = i; choose() },
                                 contentAlignment = Alignment.Center,
-                            ) { T(name, 22, if (picked) P.Ink else P.Dim, if (picked) FontWeight.Medium else FontWeight.Normal) }
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (active) { Dot(accent, 10.dp); Spacer(Modifier.width(10.dp)) }
+                                    T(name, 21, if (active) P.Ink else P.Dim, if (active) FontWeight.Medium else FontWeight.Normal)
+                                }
+                            }
                         }
                     }
+                    if (states.size < names.size) T(
+                        "Falta «${names.last()}». Pulsa X para volver a detectar y añadirlo.", 14, P.Dim, maxLines = 2,
+                        modifier = Modifier.padding(start = 8.dp, top = 6.dp),
+                    )
+                    if (note.isNotEmpty()) T(note, 13, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp, top = 6.dp, end = 8.dp))
                     Spacer(Modifier.height(8.dp))
-                    HintBar(listOf("A" to "Cambiar", "X" to "Volver a detectar", "B" to "Cerrar"))
+                    HintBar(listOf("A" to "Elegir", "◀ ▶" to "Mover", "X" to "Volver a detectar", "B" to "Cerrar"))
                 } else {
                     T(
-                        when (step) {
-                            0 -> "Heaven todavía no sabe cómo cambia este modo en tu consola. Dime en cuál está ahora y pulsa A."
-                            else -> message
-                        },
-                        16, P.Dim, maxLines = 4, modifier = Modifier.padding(horizontal = 8.dp),
+                        if (busy) note
+                        else "Paso ${captured + 1} de ${names.size}: baja el panel de Android, deja el mosaico «$tile» en «${names[captured.coerceAtMost(names.lastIndex)]}», vuelve aquí y pulsa A.",
+                        17, P.Ink, maxLines = 4, modifier = Modifier.padding(horizontal = 8.dp),
                     )
-                    if (step == 0) {
-                        Spacer(Modifier.height(12.dp))
-                        ListRow("Ahora mismo está en", if (currentIsA) nameA else nameB, true, Modifier.tap { currentIsA = !currentIsA }, arrows = true)
-                        if (message.isNotEmpty()) T(message, 14, accent, maxLines = 3, modifier = Modifier.padding(start = 8.dp, top = 8.dp, end = 8.dp))
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    HintBar(listOf("A" to if (step == 1) "Ya lo cambié" else "Empezar", "B" to "Cerrar"))
+                    Spacer(Modifier.height(8.dp))
+                    T(
+                        note.takeIf { !busy && it.isNotEmpty() } ?: "Heaven compara los ajustes de la consola en cada modo para aprender cuál es el que cambia.",
+                        14, P.Dim, maxLines = 4, modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    HintBar(listOf("A" to "Ya está en ese modo", "B" to "Cerrar"))
                 }
             }
         }

@@ -71,7 +71,15 @@ data class Look(
  * cambiar su mosaico. [kind] es "ajuste" (tabla [table]) o "propiedad".
  */
 @Serializable
-data class Learned(val kind: String, val table: String = "", val key: String, val a: String, val b: String, val nameA: String, val nameB: String)
+data class Learned(
+    val kind: String, val table: String = "", val key: String,
+    /** Valor del ajuste para cada estado y su nombre visible, en el mismo orden. */
+    val values: List<String> = emptyList(), val names: List<String> = emptyList(),
+    // Formato antiguo (dos estados); se sigue leyendo para no perder lo ya aprendido.
+    val a: String = "", val b: String = "", val nameA: String = "", val nameB: String = "",
+) {
+    fun states(): List<Pair<String, String>> = if (values.isNotEmpty()) values.zip(names) else listOf(a to nameA, b to nameB)
+}
 
 @Serializable
 data class Config(

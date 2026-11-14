@@ -272,7 +272,7 @@ class SettingsScreen : Screen, Closable {
                     if (current.title == "Tema") {
                         Panel(Modifier.fillMaxWidth().height(132.dp)) {
                             Column(Modifier.fillMaxSize().padding(horizontal = 26.dp), verticalArrangement = Arrangement.Center) {
-                                T("Heaven · Año 2026 · ¡ñ, á, ü!", 30, weight = FontWeight.Medium)
+                                T("Heaven", 30, weight = FontWeight.Medium)
                                 Spacer(Modifier.height(8.dp))
                                 Label("${fontTheme(cfg.look.font).name} — 0123456789", accent, size = 14)
                             }
