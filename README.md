@@ -45,7 +45,7 @@ Las actualizaciones se instalan encima y conservan tu configuración.
 | Y | Buscar | Buscar |
 | B | — | Volver |
 | L1 / R1 | Cambiar de página (Inicio / Widgets) | Cambiar de categoría |
-| Stick derecho | Reordenar la app fijada | Saltar tres filas |
+| Stick derecho | Recorrer el carrusel | Saltar tres filas |
 | START | Custom | Custom |
 | SELECT | CNTRL (panel rápido) | Fijar / quitar de Inicio |
 | Abajo (en la barra) | Abrir el cajón | — |

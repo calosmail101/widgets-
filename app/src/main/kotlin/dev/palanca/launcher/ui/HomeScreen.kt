@@ -213,18 +213,10 @@ class HomeScreen : Screen {
                 Btn.DOWN -> Env.nav.push(DrawerScreen())
                 Btn.A -> if (app != null) Actions.launch(app, 0.75f to 0.8f)
                 Btn.X -> if (app != null) Env.nav.push(appMenu(app))
-                Btn.RS_LEFT, Btn.RS_RIGHT -> if (app != null) {
-                    val to = (dock + if (e.btn == Btn.RS_LEFT) -1 else 1)
-                    if (to in pins.indices) {
-                        Env.cfg.update { c ->
-                            val list = c.pinned.toMutableList()
-                            val i = list.indexOf(app.key); val j = list.indexOf(pins[to].key)
-                            if (i >= 0 && j >= 0) { list[i] = list[j].also { list[j] = list[i] } }
-                            c.copy(pinned = list)
-                        }
-                        dock = to
-                    }
-                }
+                // El stick derecho recorre el carrusel igual que la cruceta (antes reordenaba las apps y
+                // parecía que el carrusel saltaba). Reordenar queda en X › Mover a la izquierda / derecha.
+                Btn.RS_LEFT -> if (dock > 0) dock-- else zone = 2
+                Btn.RS_RIGHT -> dock = (dock + 1).coerceAtMost(pins.lastIndex)
                 else -> return false
             }
         }
@@ -493,7 +485,8 @@ class HomeScreen : Screen {
                 itemsIndexed(pins, key = { _, a -> a.key }) { i, app ->
                     val on = i == selected
                     Column(
-                        Modifier.width(slot).tap(onLong = { dock = i; zone = 0; Env.nav.push(appMenu(app)) }) {
+                        // animateItem: al reordenar desde el menú, las apps se deslizan a su nuevo sitio en vez de saltar.
+                        Modifier.animateItem().width(slot).tap(onLong = { dock = i; zone = 0; Env.nav.push(appMenu(app)) }) {
                             if (selected == i && zone == 0) Actions.launch(app, 0.75f to 0.8f) else { dock = i; zone = 0 }
                         },
                         horizontalAlignment = Alignment.CenterHorizontally,

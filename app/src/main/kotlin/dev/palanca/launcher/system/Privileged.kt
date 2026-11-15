@@ -176,6 +176,17 @@ object DeviceModes {
         return Privileged.run("sh -c \"cmd settings put system peak_refresh_rate $v; cmd settings put system min_refresh_rate $v\"")
     }
 
+    // ---- Botones traseros (Retroid): «remap_custom_to_m1_value» y «…_m2_value» guardan la tecla que envían ----
+
+    /**
+     * Tecla que Heaven asigna al M2 para el puntero: un botón de mando genérico que los juegos casi
+     * nunca usan. Con el valor de fábrica (0), el M2 no envía nada y no se puede capturar.
+     */
+    const val M2_KEY = android.view.KeyEvent.KEYCODE_BUTTON_16
+    fun backButtonsSupported() = text("remap_custom_to_m2_value") != null
+    fun m2Key(): Int = read("remap_custom_to_m2_value")
+    fun setM2Key(code: Int) = write("remap_custom_to_m2_value", code)
+
     val CHARGE = listOf(0 to "Sin límite", 1 to "Hasta el 80 %")
     fun chargeLimit(): Int = if (text("percent_80_charge_limit") == null) -1 else read("percent_80_charge_limit")
     fun setChargeLimit(on: Int) = write("percent_80_charge_limit", on)

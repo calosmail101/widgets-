@@ -41,13 +41,16 @@ import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.Actions
 
-/** Pestañas del cajón: 0 = todas, 1..5 = categorías, 6 = ocultas (solo si hay alguna). */
+/**
+ * Pestañas del cajón: primero las categorías (0..4), después «Todas» y al final «Ocultas» (solo si hay
+ * alguna). «Todas» va detrás porque el cajón se usa sobre todo para ir a una categoría concreta.
+ */
 fun drawerTabs(cfg: Config): List<String> =
-    listOf("Todas") + Cat.entries.map { it.title } + if (cfg.hidden.isEmpty()) emptyList() else listOf("Ocultas")
+    Cat.entries.map { it.title } + "Todas" + if (cfg.hidden.isEmpty()) emptyList() else listOf("Ocultas")
 
 fun drawerItems(cfg: Config, apps: List<AppEntry>, tab: Int): List<AppEntry> = when (tab) {
-    0 -> apps.filter { it.key !in cfg.hidden }
-    in 1..Cat.entries.size -> apps.filter { it.key !in cfg.hidden && it.categoryIn(cfg) == Cat.entries[tab - 1] }
+    in Cat.entries.indices -> apps.filter { it.key !in cfg.hidden && it.categoryIn(cfg) == Cat.entries[tab] }
+    Cat.entries.size -> apps.filter { it.key !in cfg.hidden }
     else -> apps.filter { it.key in cfg.hidden }
 }
 

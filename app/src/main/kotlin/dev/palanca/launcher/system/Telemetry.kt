@@ -146,7 +146,7 @@ object Telemetry {
         Metric.RAM -> {
             val info = ActivityManager.MemoryInfo().also { ctx.getSystemService(ActivityManager::class.java).getMemoryInfo(it) }
             val used = info.totalMem - info.availMem
-            Reading(String.format("%.1f", gb(used)), "GB", used.toFloat() / info.totalMem, "de ${gb(info.totalMem).roundToInt()} GB")
+            Reading(String.format("%.1f", gb(used)), "GB", used.toFloat() / info.totalMem, "en uso de ${gb(info.totalMem).roundToInt()} GB")
         }
         Metric.STORAGE -> Actions.storageOverride?.let { (free, total) ->
             Reading(gb(free).roundToInt().toString(), "GB", 1f - free.toFloat() / total, "libres")

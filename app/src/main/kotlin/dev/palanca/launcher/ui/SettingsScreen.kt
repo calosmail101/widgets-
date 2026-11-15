@@ -83,6 +83,25 @@ private fun enablePointer() {
     }
 }
 
+private fun pointerKeyName(code: Int): String = when {
+    code == 0 -> "L3 + R3"
+    code == DeviceModes.M2_KEY && DeviceModes.m2Key() == code -> "M2"
+    else -> android.view.KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_")
+}
+
+/** Asigna una tecla al M2 (con PServer) y la elige como botón del puntero. */
+private fun useM2ForPointer() {
+    Env.scope.launch {
+        if (DeviceModes.m2Key() != DeviceModes.M2_KEY && !withContext(Dispatchers.IO) { DeviceModes.setM2Key(DeviceModes.M2_KEY) }) {
+            Actions.toast("Esta consola no permite asignar el M2"); return@launch
+        }
+        repeat(12) { if (DeviceModes.m2Key() == DeviceModes.M2_KEY) return@repeat; delay(250) }
+        if (DeviceModes.m2Key() != DeviceModes.M2_KEY) { Actions.toast("La consola no aceptó el cambio del M2"); return@launch }
+        Env.cfg.update { it.copy(pointerKey = DeviceModes.M2_KEY) }
+        Actions.toast(if (Actions.pointerEnabled()) "Listo: pulsa M2 en cualquier app para el puntero" else "M2 asignado. Activa también «Puntero con mando»")
+    }
+}
+
 /** Versión instalada y compilación, para saber qué Heaven hay en la consola. */
 private fun versionText(): String = runCatching {
     val info = Env.ctx.packageManager.getPackageInfo(Env.ctx.packageName, 0)
@@ -188,9 +207,15 @@ private fun sections(): List<Section> = listOf(
                 Act("Puntero con mando", { if (Actions.pointerEnabled()) "activado" else "pulsa A para activarlo" }) {
                     if (Actions.pointerEnabled()) Actions.open(Settings.ACTION_ACCESSIBILITY_SETTINGS) else enablePointer()
                 },
-                Act("Botón del puntero", { Env.cfg.value.pointerKey.let { if (it == 0) "L3 + R3" else android.view.KeyEvent.keyCodeToString(it).removePrefix("KEYCODE_") } }) {
+                Act("Botón del puntero", { pointerKeyName(Env.cfg.value.pointerKey) }) {
                     Env.nav.push(KeyCaptureScreen("Botón del puntero") { code -> Env.cfg.update { it.copy(pointerKey = code) } })
                 },
+            ) + (if (DeviceModes.backButtonsSupported()) listOf(
+                // El M2 de fábrica no envía ninguna tecla: Heaven le asigna una y la usa para el puntero.
+                Act("Usar M2 (botón trasero) para el puntero", { if (DeviceModes.m2Key() == DeviceModes.M2_KEY && Env.cfg.value.pointerKey == DeviceModes.M2_KEY) "en uso" else "" }) {
+                    useM2ForPointer()
+                },
+            ) else emptyList()) + listOf(
                 Act("Volver a L3 + R3 para el puntero") { Env.cfg.update { it.copy(pointerKey = 0) } },
             ),
     ),
