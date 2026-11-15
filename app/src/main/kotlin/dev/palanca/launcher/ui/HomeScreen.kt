@@ -189,8 +189,9 @@ class HomeScreen : Screen {
                 fun below() { if (pins.isNotEmpty()) zone = 0 else Env.nav.push(DrawerScreen()) }
                 when (e.btn) {
                     // 0 jugar · 2 archivos (a su derecha) · 1 música (debajo) · 3 widget (más abajo).
-                    Btn.RIGHT -> if (button == 0) button = 2 else if (pins.isNotEmpty()) zone = 0 else if (total > 0) zone = 1
-                    Btn.LEFT -> if (button == 2) button = 0
+                    // Sobre la música, ◀ ▶ cambian de canción; para ir al carrusel, desde Jugar o Archivos.
+                    Btn.RIGHT -> when (button) { 0 -> button = 2; 1 -> dev.palanca.launcher.system.Media.skip(+1); else -> if (pins.isNotEmpty()) zone = 0 else if (total > 0) zone = 1 }
+                    Btn.LEFT -> when (button) { 2 -> button = 0; 1 -> dev.palanca.launcher.system.Media.skip(-1); else -> Unit }
                     Btn.UP -> when (button) { 0, 2 -> if (total > 0) zone = 1; 3 -> button = 1; else -> button = 0 }
                     // Sin apps fijadas no hay carrusel: bajar abre directamente todas las apps.
                     Btn.DOWN -> when (button) { 0, 2 -> button = 1; 1 -> if (slot != null) button = 3 else below(); else -> below() }
@@ -226,15 +227,17 @@ class HomeScreen : Screen {
                 else -> return false
             }
             else -> when (e.btn) {
-                Btn.LEFT -> if (dock > 0) dock-- else zone = 2
+                // Al salir del carrusel (izquierda o arriba) vuelve a su posición central, para que no se
+                // quede desplazado mientras se usan los botones o las tarjetas.
+                Btn.LEFT -> if (dock > 0) dock-- else { zone = 2; dock = pins.size / 2 }
                 Btn.RIGHT -> dock = (dock + 1).coerceAtMost(pins.lastIndex)
-                Btn.UP -> zone = if (total > 0) 1 else 2
+                Btn.UP -> { zone = if (total > 0) 1 else 2; dock = pins.size / 2 }
                 Btn.DOWN -> Env.nav.push(DrawerScreen())
                 Btn.A -> if (app != null) Actions.launch(app, 0.75f to 0.8f)
                 Btn.X -> if (app != null) Env.nav.push(appMenu(app))
                 // El stick derecho recorre el carrusel igual que la cruceta (antes reordenaba las apps y
                 // parecía que el carrusel saltaba). Reordenar queda en X › Mover a la izquierda / derecha.
-                Btn.RS_LEFT -> if (dock > 0) dock-- else zone = 2
+                Btn.RS_LEFT -> if (dock > 0) dock-- else { zone = 2; dock = pins.size / 2 }
                 Btn.RS_RIGHT -> dock = (dock + 1).coerceAtMost(pins.lastIndex)
                 else -> return false
             }
@@ -369,7 +372,7 @@ class HomeScreen : Screen {
                         when {
                             zone == 1 -> listOf("A" to "Abrir / cambiar", "B" to "Volver")
                             zone == 2 && button == 0 -> listOf("A" to "Jugar", "X" to "Elegir app")
-                            zone == 2 && button == 1 -> listOf("A" to (if (dev.palanca.launcher.system.Media.now.value?.playing == true) "Pausa" else "Reproducir"), "X" to "Abrir la app")
+                            zone == 2 && button == 1 -> listOf("A" to (if (dev.palanca.launcher.system.Media.now.value?.playing == true) "Pausa" else "Reproducir"), "◀ ▶" to "Canción", "X" to "Abrir la app")
                             zone == 2 && button == 2 -> listOf("A" to "Archivos")
                             zone == 2 -> listOf("A" to "Abrir la app", "X" to "Opciones")
                             else -> listOf("A" to "Abrir", "▼" to "Todas las apps", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "CNTRL", "START" to "Custom")
@@ -549,8 +552,8 @@ class HomeScreen : Screen {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
-                            Modifier.focusScale(on, 1.3f).iconFocus(on && active, iconShape(cfg, app), LocalAccent.current)
-                                .alpha(if (on) 1f else 0.62f)
+                            Modifier.focusScale(on && active, 1.3f).iconFocus(on && active, iconShape(cfg, app), LocalAccent.current)
+                                .alpha(if (on && active) 1f else 0.62f)
                         ) { AppIcon(app, size) }
                         Spacer(Modifier.height(size * 0.15f + 14.dp))
                         // El hueco del nombre se reserva siempre para que los iconos no salten; el texto solo se pinta si los nombres están activos.

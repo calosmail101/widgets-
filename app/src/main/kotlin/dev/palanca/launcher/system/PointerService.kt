@@ -129,7 +129,7 @@ class PointerService : AccessibilityService() {
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { if (!down) tap(60); true }
             KeyEvent.KEYCODE_BUTTON_X -> { if (!down) tap(650); true }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> {
-                if (!down && !performGlobalAction(GLOBAL_ACTION_BACK)) Privileged.run("input keyevent 4")
+                if (!down && !performGlobalAction(GLOBAL_ACTION_BACK)) Thread { Privileged.run("input keyevent 4") }.start()
                 true
             }
             KeyEvent.KEYCODE_BUTTON_L1 -> { if (!down) swipe(+1); true }
@@ -340,8 +340,11 @@ class PointerService : AccessibilityService() {
      */
     private fun tap(ms: Long) {
         val px = x.toInt(); val py = y.toInt()
+        // Nunca en el hilo principal: «input tap» espera a que la ventana tocada procese el toque, y si esa
+        // ventana es la de Heaven (que está esperando aquí), se bloquean los dos hasta que Android avisa de
+        // que Heaven no responde. Pasaba al tocar el óvalo de música con el puntero.
         fun fallback() {
-            Privileged.run(if (ms > 300) "input swipe $px $py $px $py $ms" else "input tap $px $py")
+            Thread { Privileged.run(if (ms > 300) "input swipe $px $py $px $py $ms" else "input tap $px $py") }.start()
         }
         val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
         val sent = runCatching {

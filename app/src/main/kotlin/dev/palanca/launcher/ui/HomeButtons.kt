@@ -83,7 +83,7 @@ fun MusicPill(selected: Boolean, modifier: Modifier = Modifier, onTap: () -> Uni
     }
     Row(
         modifier.requiredHeight(ROW_HEIGHT).brackets(selected, P.Ink, gap = 4.dp, radius = ROW_HEIGHT / 2)
-            .glassPanel(CircleShape).tap(onTap = onTap).padding(start = 12.dp, end = 26.dp),
+            .glassPanel(CircleShape).tap(onTap = onTap).padding(start = 12.dp, end = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(ROW_HEIGHT - 22.dp).clip(CircleShape).background(accent.copy(alpha = 0.25f)), contentAlignment = Alignment.Center) {
@@ -96,8 +96,35 @@ fun MusicPill(selected: Boolean, modifier: Modifier = Modifier, onTap: () -> Uni
             T(title, 17, if (external != null || background.isNotEmpty()) P.Ink else P.Dim, FontWeight.Medium)
             T(subtitle, 13, P.Dim)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(10.dp))
+        // Canción anterior y siguiente a los lados del visualizador (con el mando: ◀ ▶ sobre el óvalo).
+        SkipButton(false, enabled = external != null || background.isNotEmpty()) { Media.skip(-1) }
+        Spacer(Modifier.width(8.dp))
         Bars(playing, accent, Modifier.width(54.dp).height(34.dp))
+        Spacer(Modifier.width(8.dp))
+        SkipButton(true, enabled = external != null || background.isNotEmpty()) { Media.skip(+1) }
+    }
+}
+
+/** Botoncito redondo con un triángulo y una barra (⏮ / ⏭), del mismo trazo que el resto. */
+@Composable
+private fun SkipButton(forward: Boolean, enabled: Boolean, onTap: () -> Unit) {
+    val ink = if (enabled) P.Ink else P.Dim
+    Box(
+        Modifier.size(34.dp).clip(CircleShape).background(P.Line).then(if (enabled) Modifier.tap(onTap = onTap) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(14.dp)) {
+            val w = size.width; val h = size.height
+            val tri = Path().apply {
+                if (forward) { moveTo(w * 0.08f, 0f); lineTo(w * 0.72f, h / 2); lineTo(w * 0.08f, h) }
+                else { moveTo(w * 0.92f, 0f); lineTo(w * 0.28f, h / 2); lineTo(w * 0.92f, h) }
+                close()
+            }
+            drawPath(tri, ink)
+            val x = if (forward) w * 0.86f else w * 0.14f
+            drawLine(ink, Offset(x, 0f), Offset(x, h), w * 0.16f, StrokeCap.Round)
+        }
     }
 }
 

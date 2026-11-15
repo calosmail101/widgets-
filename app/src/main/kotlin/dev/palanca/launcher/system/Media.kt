@@ -90,7 +90,14 @@ object Media {
         if (c.playbackState?.state == PlaybackState.STATE_PLAYING) c.transportControls.pause() else c.transportControls.play()
     }
 
-    fun next() { controller?.transportControls?.skipToNext() }
+    /**
+     * Canción siguiente (+1) o anterior (-1): la de la otra app si hay una sonando; si no, la de fondo de Heaven.
+     */
+    fun skip(dir: Int) {
+        val c = controller
+        if (c != null && now.value != null) { if (dir > 0) c.transportControls.skipToNext() else c.transportControls.skipToPrevious() }
+        else Music.skip(dir)
+    }
 
     // ---- Visualizador ----
 

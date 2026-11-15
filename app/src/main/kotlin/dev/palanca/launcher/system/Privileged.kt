@@ -309,6 +309,15 @@ object Music {
         }.onFailure { failures++; next() }
     }
 
+    /** Cambia de canción de fondo: +1 siguiente, -1 anterior. */
+    fun skip(dir: Int) {
+        if (tracks.isEmpty()) return
+        release()
+        index = (index + dir + tracks.size) % tracks.size
+        failures = 0
+        if (wanted) start()
+    }
+
     private fun next() {
         release()
         index = (index + 1) % tracks.size.coerceAtLeast(1)
