@@ -234,6 +234,7 @@ private fun sections(): List<Section> = listOf(
             Act("Usar Heaven como pantalla de inicio") { Actions.open(Settings.ACTION_HOME_SETTINGS) },
             Toggle("Avisar si la consola se calienta jugando (45 °C)", { it.heatAlert }) { c, v -> c.copy(heatAlert = v) },
             Act("Ajustes de Android") { Actions.open(Settings.ACTION_SETTINGS) },
+            Act("Archivos y limpieza") { Env.nav.push(FilesScreen()) },
             Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
             Act("Memoria que usa Heaven", { "${android.os.Debug.getPss() / 1024} MB" }) { },
             Act("Versión", { versionText() }) { },

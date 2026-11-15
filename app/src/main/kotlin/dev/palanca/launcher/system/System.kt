@@ -33,7 +33,7 @@ import kotlin.math.sin
 enum class ActionId(val title: String) {
     NONE("Nada"), ANDROID_SETTINGS("Ajustes de Android"), QUICK_PANEL("CNTRL"),
     RECENTS("Apps recientes"), NOTIFICATIONS("Notificaciones"), SEARCH("Buscar"),
-    CUSTOMIZE("Custom"), DRAWER("Cajón de apps"), LAST_APP("Última app"),
+    CUSTOMIZE("Custom"), DRAWER("Cajón de apps"), LAST_APP("Última app"), FILES("Archivos"),
 }
 
 /** Atajos configurables. Solo se disparan si la pantalla activa no usa ese botón. */
@@ -65,6 +65,7 @@ object Actions {
             ActionId.CUSTOMIZE -> if (Env.nav.top !is SettingsScreen) Env.nav.push(SettingsScreen())
             ActionId.DRAWER -> if (Env.nav.top !is DrawerScreen) Env.nav.push(DrawerScreen())
             ActionId.LAST_APP -> lastApp()?.let(::launch) ?: toast("Todavía no has abierto ninguna app")
+            ActionId.FILES -> if (Env.nav.top !is dev.palanca.launcher.ui.FilesScreen) Env.nav.push(dev.palanca.launcher.ui.FilesScreen())
         }
     }
 

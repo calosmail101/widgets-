@@ -185,7 +185,7 @@ class QuickPanel : Screen, Closable {
     /** Las cuatro cajitas del final de CNTRL: estilo de mando, gatillos, luces y ajustes de Android. */
     private val boxes = listOf("mando", "gatillos", "luces", "ajustes")
     private var box by mutableIntStateOf(0)
-    private val system = listOf("brillo", "volumen", "wifi", "bluetooth", "cajas")
+    private val system = listOf("brillo", "volumen", "wifi", "bluetooth", "archivos", "cajas")
     private fun console(): List<String> = buildList {
         if (performance >= 0) add("rendimiento")
         if (fan >= 0) add("ventilador")
@@ -242,6 +242,7 @@ class QuickPanel : Screen, Closable {
             "cajas" -> openBox(boxes[box])
             "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
             "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
+            "archivos" -> { Env.nav.pop(); Env.nav.push(FilesScreen()) }
             "clustertune" -> { Env.nav.pop(); clusterTune?.let { Actions.launch(it) } }
             "ajustes" -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
         }
@@ -300,6 +301,7 @@ class QuickPanel : Screen, Closable {
                                 "volumen" -> Slider("Volumen", volume, on, tap)
                                 "wifi" -> ListRow("Wi‑Fi e internet", "", on, tap)
                                 "bluetooth" -> ListRow("Bluetooth", "", on, tap)
+                                "archivos" -> ListRow("Archivos y limpieza", "", on, tap)
                                 // Cuatro cajitas de cristal con su icono; cada una abre su ventana.
                                 else -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     boxes.forEachIndexed { k, name ->
