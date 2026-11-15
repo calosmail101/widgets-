@@ -67,6 +67,8 @@ class PointerService : AccessibilityService() {
     private var l1 = false
     private var r1 = false
     private var select = false
+    private var startKey = false
+    private var shotCombo = false
     private var hudCombo = false
     private var hud: HudView? = null
     private var hudJob: kotlinx.coroutines.Job? = null
@@ -107,6 +109,9 @@ class PointerService : AccessibilityService() {
             KeyEvent.KEYCODE_BUTTON_SELECT -> select = down
         }
         if (l1 && r1 && select) { if (!hudCombo) { hudCombo = true; toggleHud() } } else hudCombo = false
+        // Captura: L1 + R1 + START en cualquier app. Tampoco se consumen.
+        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_START) startKey = down
+        if (l1 && r1 && startKey) { if (!shotCombo) { shotCombo = true; Playtime.screenshot() } } else shotCombo = false
         val toggleKey = if (Env.ready) Env.cfg.value.pointerKey else 0
         if (toggleKey != 0) {
             // Botón propio elegido por el usuario: enciende o apaga al soltarlo y nunca llega a la app.

@@ -153,7 +153,11 @@ fun migrate(old: Config): Config {
 data class Usage(val last: Long = 0, val count: Int = 0, val totalMs: Long = 0, val lastSessionMs: Long = 0)
 
 @Serializable
-data class Stats(val usage: Map<String, Usage> = emptyMap(), val pendingKey: String? = null, val pendingAt: Long = 0)
+data class Stats(
+    val usage: Map<String, Usage> = emptyMap(), val pendingKey: String? = null, val pendingAt: Long = 0,
+    /** Tiempo de juego por día («2026-11-15») y por paquete, en milisegundos. Se guardan 28 días. */
+    val days: Map<String, Map<String, Long>> = emptyMap(),
+)
 
 /** Estado persistente en un JSON. Las escrituras se agrupan y van fuera del hilo principal. */
 class JsonStore<T>(

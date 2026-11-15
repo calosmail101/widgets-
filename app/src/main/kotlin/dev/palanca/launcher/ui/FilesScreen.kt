@@ -63,7 +63,8 @@ private class Pane(start: File) {
  * Cruceta: moverse · A: abrir · B: subir · L1/R1: cambiar de panel · Y: marcar · X: acciones ·
  * START: lugares · SELECT: limpieza. Borrar siempre manda a la papelera.
  */
-class FilesScreen : Screen, Closable {
+/** [origin]: punto de la pantalla del que nace y al que vuelve la ventana (el botón que la abrió). */
+class FilesScreen(private val origin: TransformOrigin = TransformOrigin(0.5f, 0.5f)) : Screen, Closable {
     override val overlay get() = true
     override var closing by mutableStateOf(false)
     private val panes = listOf(Pane(Files.internal), Pane(Files.sd() ?: Files.internal))
@@ -256,9 +257,8 @@ class FilesScreen : Screen, Closable {
     @Composable
     override fun Content() {
         val accent = LocalAccent.current
-        // Al volver de otra app o de un menú, la lista se refresca (puede haber cambiado).
-        LaunchedEffect(Unit) { reloadAll() }
-        Popup(TransformOrigin(0.5f, 0.5f), closing, { Env.nav.pop() }) {
+        // Nace del botón que la abrió y vuelve a él al cerrarse, como las demás ventanas de Heaven.
+        Popup(origin, closing, { Env.nav.pop() }) {
             Column(Modifier.align(Alignment.Center).padding(horizontal = 40.dp, vertical = 28.dp)) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     panes.forEachIndexed { i, p -> PaneView(p, i == side, Modifier.weight(1f).fillMaxHeight()) }

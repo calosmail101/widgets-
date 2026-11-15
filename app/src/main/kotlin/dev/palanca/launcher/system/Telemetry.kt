@@ -79,6 +79,24 @@ object Telemetry {
         }
     }
 
+    private var drawAvg = 0.0
+
+    /**
+     * Tiempo de batería que queda al consumo actual («≈ 2 h 40 min»), o null cargando o sin datos.
+     * Carga restante (µAh) entre corriente (µA), con la corriente suavizada para que no salte.
+     */
+    fun remaining(): String? = runCatching {
+        val bm = ctx.getSystemService(BatteryManager::class.java)
+        if (bm.isCharging) return@runCatching null
+        val charge = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER).toDouble()
+        var amps = abs(bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW).toDouble())
+        if (charge <= 0 || amps <= 0) return@runCatching null
+        if (amps < 30_000) amps *= 1000 // algunos dispositivos dan mA en vez de µA
+        drawAvg = if (drawAvg <= 0) amps else drawAvg * 0.8 + amps * 0.2
+        val minutes = (charge / drawAvg * 60).toInt().coerceIn(1, 48 * 60)
+        if (minutes < 60) "≈ $minutes min" else "≈ ${minutes / 60} h ${minutes % 60} min"
+    }.getOrNull()
+
     /** Una lectura suelta de varias métricas (para la tira de estadísticas en juego). Llamar fuera del hilo de la interfaz. */
     fun snapshot(metrics: List<Metric>): Map<Metric, Reading> = metrics.associateWith { m -> runCatching { sample(m) }.getOrDefault(Reading.NONE) }
 

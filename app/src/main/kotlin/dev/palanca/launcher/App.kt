@@ -69,5 +69,23 @@ class App : Application() {
         super.onCreate()
         Env.init(this)
         Env.apps.start()
+        keepAsHome()
+    }
+
+    /**
+     * Al actualizar Heaven con componentes nuevos, Android a veces olvida que era la pantalla de inicio
+     * «siempre» y vuelve a preguntar con cada pulsación de Inicio. Si Heaven sigue teniendo el rol de
+     * inicio pero ya no es la actividad predeterminada, lo restablece con PServer.
+     */
+    private fun keepAsHome() {
+        Thread {
+            runCatching {
+                val home = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+                val current = packageManager.resolveActivity(home, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+                val role = getSystemService(android.app.role.RoleManager::class.java)
+                if (current != packageName && role?.isRoleHeld(android.app.role.RoleManager.ROLE_HOME) == true)
+                    dev.palanca.launcher.system.Privileged.run("cmd package set-home-activity $packageName/.MainActivity")
+            }
+        }.start()
     }
 }

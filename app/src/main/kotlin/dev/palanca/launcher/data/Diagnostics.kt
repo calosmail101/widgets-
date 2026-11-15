@@ -42,6 +42,84 @@ object Diagnostics {
 
     private fun read(path: String): String? = runCatching { File(path).readText().trim() }.getOrNull()
 
+    /** Carpeta de Heaven en Descargas: estado.json y los reportes. Se lee con un solo «adb pull». */
+    private fun folder(): File = File(Files.internal, "Download/Heaven").apply { mkdirs() }
+    private var lastState = 0L
+
+    /**
+     * Escribe Download/Heaven/estado.json: versión de Heaven, ajustes de la consola, perfiles, apps con su
+     * versión y categoría, y tiempo de juego. Pensado para que un agente o un script lo lean por ADB sin
+     * tener que explorar la consola. Como mucho una vez por hora salvo que se pida ([force]).
+     */
+    fun writeState(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastState < 3_600_000L) return
+        lastState = now
+        runCatching {
+            val ctx = Env.ctx
+            val pm = ctx.packageManager
+            val cfg = Env.cfg.value
+            fun q(v: String) = "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+            fun sys(k: String) = runCatching { android.provider.Settings.System.getString(ctx.contentResolver, k) }.getOrNull() ?: ""
+            val heaven = pm.getPackageInfo(ctx.packageName, 0)
+            // Una línea por entrada y se unen al final: más fácil de leer y de mantener.
+            val consola = listOf("performance_mode", "fan_mode", "fan_speed", "peak_refresh_rate", "percent_80_charge_limit", "flip_button_layout",
+                "no_create_gamepad_button_layout", "trigger_input_mode", "remap_custom_to_m1_value", "remap_custom_to_m2_value")
+                .joinToString(", ") { "${q(it)}: ${q(sys(it))}" }
+            val perfiles = cfg.profiles.entries.joinToString(", ") { (pkg, p) -> "${q(pkg)}: {\"modo\": ${p.performance}, \"ventilador\": ${p.fan}, \"velocidad\": ${p.fanSpeed}, \"hz\": ${p.hz}}" }
+            val apps = Env.apps.apps.value.map { app ->
+                val version = runCatching { pm.getPackageInfo(app.pkg, 0).versionName }.getOrNull() ?: ""
+                "    {\"paquete\": ${q(app.pkg)}, \"nombre\": ${q(app.label)}, \"version\": ${q(version)}, \"categoria\": ${q(app.categoryIn(cfg).title)}, \"fijada\": ${app.key in cfg.pinned}}"
+            }
+            val juego = dev.palanca.launcher.system.Playtime.summary(7).joinToString(", ") { (pkg, ms) -> "${q(pkg)}: ${ms / 60_000}" }
+            val lines = listOf(
+                "{",
+                "  \"generado\": ${q(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date()))},",
+                "  \"heaven\": {\"version\": ${q(heaven.versionName ?: "")}, \"compilacion\": ${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(heaven)}},",
+                "  \"consola\": {$consola, \"puntero\": ${dev.palanca.launcher.system.Actions.pointerEnabled()}, \"boton_puntero\": ${cfg.pointerKey}},",
+                "  \"perfiles\": {$perfiles},",
+                "  \"apps\": [",
+                apps.joinToString(",\n"),
+                "  ],",
+                "  \"tiempo_de_juego_7_dias_min\": {$juego}",
+                "}",
+            )
+            val json = lines.joinToString("\n") + "\n"
+            File(folder(), "estado.json").writeText(json)
+        }
+    }
+
+    /**
+     * Reporte de un problema en un ZIP (Download/Heaven/reportes): diagnóstico, estado.json, el registro del
+     * sistema de los últimos minutos y las tres últimas capturas. Para mandarlo a quien lo vaya a revisar.
+     */
+    fun report(done: (String) -> Unit) {
+        Env.scope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                runCatching {
+                    val stamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
+                    val work = File(Env.ctx.getExternalFilesDir(null), "reporte-$stamp").apply { deleteRecursively(); mkdirs() }
+                    File(work, "diagnostico.txt").writeText(build(Env.ctx))
+                    writeState(force = true)
+                    File(folder(), "estado.json").copyTo(File(work, "estado.json"), overwrite = true)
+                    // El registro del sistema solo lo puede leer PServer (las apps normales solo ven el suyo).
+                    val log = File(work, "registro.txt")
+                    Privileged.run("sh -c \"logcat -d -t 4000 > ${log.absolutePath}\"")
+                    repeat(30) { if (log.exists() && log.length() > 0) return@repeat; Thread.sleep(200) }
+                    val shots = listOf("Pictures/Screenshots", "Pictures/Heaven").map { File(Files.internal, it) }
+                        .flatMap { it.listFiles().orEmpty().toList() }.filter { it.isFile }.sortedByDescending { it.lastModified() }.take(3)
+                    shots.forEach { it.copyTo(File(work, it.name), overwrite = true) }
+                    val zip = File(File(folder(), "reportes").apply { mkdirs() }, "reporte-$stamp.zip")
+                    val error = Archives.compress(work.listFiles().orEmpty().toList(), zip, { false }) { _, _ -> }
+                    work.deleteRecursively()
+                    Files.notifyChanged(listOf(zip.absolutePath))
+                    error ?: "Reporte guardado en Descargas/Heaven/reportes"
+                }.getOrElse { "No se pudo crear el reporte: ${it.message}" }
+            }
+            done(msg)
+        }
+    }
+
     fun build(ctx: Context): String = buildString {
         fun section(title: String, body: StringBuilder.() -> Unit) {
             append("\n== ").append(title).append(" ==\n")

@@ -242,7 +242,7 @@ class QuickPanel : Screen, Closable {
             "cajas" -> openBox(boxes[box])
             "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
             "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
-            "archivos" -> { Env.nav.pop(); Env.nav.push(FilesScreen()) }
+            "archivos" -> { Env.nav.pop(); Env.nav.push(FilesScreen(TransformOrigin(0.2f, 0.45f))) }
             "clustertune" -> { Env.nav.pop(); clusterTune?.let { Actions.launch(it) } }
             "ajustes" -> { Env.nav.pop(); Actions.open(Settings.ACTION_SETTINGS) }
         }
@@ -784,6 +784,62 @@ class KeyCaptureScreen(private val title: String, private val onKey: (Int) -> Un
                     "Pulsa ahora el botón que quieras usar. Si es un botón trasero (M1/M2), asígnale antes una tecla en los ajustes de la consola que no sea Home ni Atrás. Toca fuera para cancelar.",
                     15, P.Dim, maxLines = 4, modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Tiempo de juego por juego o emulador (también lo abierto desde Cocoon). L1/R1 cambian entre los
+ * últimos 7 y 28 días. Se mide con el servicio del puntero, así que necesita que esté activo.
+ */
+class PlaytimeScreen : Screen, Closable {
+    override val overlay get() = true
+    override var closing by mutableStateOf(false)
+    private var range by mutableIntStateOf(7)
+
+    override fun onPad(e: PadEvent): Boolean {
+        if (e.long) return true
+        when (e.btn) {
+            Btn.L1, Btn.R1, Btn.LEFT, Btn.RIGHT -> range = if (range == 7) 28 else 7
+            Btn.B -> Env.nav.pop()
+            else -> Unit
+        }
+        return true
+    }
+
+    @Composable
+    override fun Content() {
+        val accent = LocalAccent.current
+        val list = remember(range) { dev.palanca.launcher.system.Playtime.summary(range) }
+        val apps = Env.apps.apps.value
+        val top = list.firstOrNull()?.second ?: 1L
+        Popup(TransformOrigin(0.5f, 0.5f), closing, { Env.nav.pop() }) {
+            Window(Modifier.align(Alignment.Center).width(860.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)) {
+                    T("Tiempo de juego", 24, weight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    T(if (range == 7) "últimos 7 días" else "últimos 28 días", 15, accent)
+                }
+                T("Total: ${dev.palanca.launcher.system.Playtime.human(list.sumOf { it.second })}" +
+                    if (!Actions.pointerEnabled()) " · activa el puntero en Custom › Mandos para medirlo" else "",
+                    14, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                if (list.isEmpty()) T("Todavía no hay partidas en este periodo.", 16, P.Dim, modifier = Modifier.padding(8.dp))
+                list.take(7).forEach { (pkg, ms) ->
+                    val app = apps.firstOrNull { it.pkg == pkg }
+                    Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (app != null) AppIcon(app, 40.dp) else Spacer(Modifier.width(40.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            T(app?.label ?: pkg, 16, P.Ink, FontWeight.Medium)
+                            Spacer(Modifier.height(5.dp))
+                            Box(Modifier.fillMaxWidth(ms.toFloat() / top).height(5.dp).background(accent, RoundedCornerShape(3.dp)))
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        T(dev.palanca.launcher.system.Playtime.human(ms), 15, P.Ink, mono = true)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                HintBar(listOf("L1 R1" to "7 / 28 días", "B" to "Cerrar"))
             }
         }
     }

@@ -34,6 +34,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -199,7 +200,7 @@ class HomeScreen : Screen {
                     Btn.A -> when (button) {
                         0 -> playApp(cfg)?.let { Actions.launch(it, 0.18f to 0.62f) } ?: Env.nav.push(playAppPicker())
                         1 -> musicAction()
-                        2 -> Env.nav.push(FilesScreen())
+                        2 -> Env.nav.push(FilesScreen(TransformOrigin(0.36f, 0.6f)))
                         else -> slot?.let(::openWidgetApp)
                     }
                     Btn.X -> when (button) {
@@ -289,6 +290,10 @@ class HomeScreen : Screen {
         val accent = LocalAccent.current
         val apps by Env.apps.apps.collectAsState()
         val battery by rememberBattery()
+        // Tiempo de batería restante, recalculado cada 20 s mientras Inicio está a la vista.
+        val left by androidx.compose.runtime.produceState<String?>(null, battery.charging) {
+            while (true) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dev.palanca.launcher.system.Telemetry.remaining() }; kotlinx.coroutines.delay(20_000) }
+        }
         Box(Modifier.fillMaxSize()) {
             Wallpaper(look)
             Column(Modifier.fillMaxSize().padding(start = 56.dp, end = 56.dp, top = 26.dp, bottom = 20.dp)) {
@@ -316,7 +321,7 @@ class HomeScreen : Screen {
                     Row(Modifier.tap { Env.nav.push(QuickPanel()) }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SymbolPill(wifi) { WifiGlyph(P.Ink) }
                         SymbolPill(bluetooth) { BluetoothGlyph(P.Ink) }
-                        if (battery.percent >= 0) StatusPill("${battery.percent} %" + if (battery.charging) " · cargando" else "", true)
+                        if (battery.percent >= 0) StatusPill("${battery.percent} %" + if (battery.charging) " · cargando" else left?.let { " · $it" }.orEmpty(), true)
                     }
                 }
 
@@ -344,13 +349,15 @@ class HomeScreen : Screen {
                             }
                             Spacer(Modifier.height(if (homeWidget(cfg) != null) 12.dp else 22.dp))
                             Piece("botones") {
-                                Column(Modifier.width(IntrinsicSize.Max)) {
+                                // Ancho fijo = Jugar + hueco + Archivos: la música no se estira con títulos largos.
+                                val playApp = apps.firstOrNull { it.key == cfg.playApp }
+                                Column(Modifier.width(if (playApp != null) 400.dp else 320.dp)) {
                                     // Jugar y, a su derecha, Archivos; debajo, la música a todo el ancho de esa fila.
                                     // Así queda un hueco claro entre los botones y el carrusel.
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        PlayButton(apps.firstOrNull { it.key == cfg.playApp }, zone == 2 && button == 0)
+                                        PlayButton(playApp, zone == 2 && button == 0)
                                         Spacer(Modifier.width(16.dp))
-                                        FilesButton(zone == 2 && button == 2) { zone = 2; button = 2; Env.nav.push(FilesScreen()) }
+                                        FilesButton(zone == 2 && button == 2) { zone = 2; button = 2; Env.nav.push(FilesScreen(TransformOrigin(0.36f, 0.6f))) }
                                     }
                                     Spacer(Modifier.height(16.dp))
                                     MusicPill(zone == 2 && button == 1, Modifier.fillMaxWidth()) { zone = 2; button = 1; musicAction() }
@@ -372,7 +379,7 @@ class HomeScreen : Screen {
                         when {
                             zone == 1 -> listOf("A" to "Abrir / cambiar", "B" to "Volver")
                             zone == 2 && button == 0 -> listOf("A" to "Jugar", "X" to "Elegir app")
-                            zone == 2 && button == 1 -> listOf("A" to (if (dev.palanca.launcher.system.Media.now.value?.playing == true) "Pausa" else "Reproducir"), "◀ ▶" to "Canción", "X" to "Abrir la app")
+                            zone == 2 && button == 1 -> listOf("A" to (dev.palanca.launcher.system.Media.now.value?.let { if (it.playing) "Pausa" else "Reproducir" } ?: "Abrir Spotify"), "◀ ▶" to "Canción", "X" to "Abrir la app")
                             zone == 2 && button == 2 -> listOf("A" to "Archivos")
                             zone == 2 -> listOf("A" to "Abrir la app", "X" to "Opciones")
                             else -> listOf("A" to "Abrir", "▼" to "Todas las apps", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "CNTRL", "START" to "Custom")

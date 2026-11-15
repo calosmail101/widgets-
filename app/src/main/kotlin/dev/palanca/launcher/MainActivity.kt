@@ -116,6 +116,8 @@ class MainActivity : ComponentActivity(), HostBridge {
         super.onResume()
         Env.foreground.value = true
         Actions.onReturn()
+        // estado.json para leerlo por ADB (como mucho una vez por hora).
+        Env.scope.launch(kotlinx.coroutines.Dispatchers.IO) { dev.palanca.launcher.data.Diagnostics.writeState() }
         immersive()
     }
 

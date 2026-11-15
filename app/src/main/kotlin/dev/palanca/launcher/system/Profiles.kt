@@ -31,6 +31,7 @@ object Profiles {
     fun onForeground(pkg: String) {
         if (pkg in TRANSIENT || pkg == current) return
         current = pkg
+        runCatching { Playtime.onForeground(pkg) }
         val ownLauncher = pkg == Env.ctx.packageName
         val profile = if (ownLauncher) null else Env.cfg.value.profiles[pkg]?.takeIf { !it.isEmpty() }
         when {

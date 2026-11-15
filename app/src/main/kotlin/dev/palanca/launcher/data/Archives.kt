@@ -20,7 +20,9 @@ object Archives {
     fun compress(sources: List<File>, dest: File, cancel: () -> Boolean, progress: (Long, Long) -> Unit): String? = runCatching {
         val total = sources.sumOf { Files.size(it) }
         var done = 0L
-        val base = sources.first().parentFile!!
+        // Carpeta común a todo lo que se comprime: así las rutas dentro del archivo nunca llevan «../».
+        var base = sources.first().parentFile!!
+        while (sources.any { !it.absolutePath.startsWith(base.absolutePath + File.separator) }) base = base.parentFile ?: break
         val files = sources.flatMap { s -> s.walkTopDown().toList() }
         if (dest.extension.lowercase() == "7z") {
             SevenZOutputFile(dest).use { out ->

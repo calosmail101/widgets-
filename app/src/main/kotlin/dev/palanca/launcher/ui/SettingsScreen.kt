@@ -225,6 +225,10 @@ private fun sections(): List<Section> = listOf(
         listOf(
             Act("Exportar tema") { Backup.export(themeOnly = true) },
             Act("Exportar copia completa") { Backup.export(themeOnly = false) },
+            Act("Copiar partidas ahora", { "en la SD › Backups/Partidas · se hace solo al salir de un juego" }) {
+                Actions.toast("Copiando partidas…")
+                Env.scope.launch { val n = withContext(Dispatchers.IO) { dev.palanca.launcher.system.Playtime.backupAll() }; Actions.toast(if (n > 0) "Partidas copiadas de $n juego(s)" else "No había partidas nuevas que copiar") }
+            },
             Act("Importar tema o copia") { Backup.import() },
         ),
     ),
@@ -235,6 +239,8 @@ private fun sections(): List<Section> = listOf(
             Toggle("Avisar si la consola se calienta jugando (45 °C)", { it.heatAlert }) { c, v -> c.copy(heatAlert = v) },
             Act("Ajustes de Android") { Actions.open(Settings.ACTION_SETTINGS) },
             Act("Archivos y limpieza") { Env.nav.push(FilesScreen()) },
+            Act("Tiempo de juego") { Env.nav.push(PlaytimeScreen()) },
+            Act("Reportar un problema", { "zip en Descargas/Heaven" }) { Actions.toast("Preparando el reporte…"); Diagnostics.report { Actions.toast(it) } },
             Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
             Act("Memoria que usa Heaven", { "${android.os.Debug.getPss() / 1024} MB" }) { },
             Act("Versión", { versionText() }) { },
