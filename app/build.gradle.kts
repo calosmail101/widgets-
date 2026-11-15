@@ -50,6 +50,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    // Las librerías de Apache traen los mismos archivos de metadatos: no hacen falta dentro del APK.
+    packaging {
+        resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module")
+    }
     testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
@@ -61,6 +65,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     // Instala los perfiles de arranque de Compose también al instalar el APK a mano: menos tirones.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    // Explorador: comprimir y extraer ZIP y 7z (Apache 2.0); XZ es el compresor que usa 7z.
+    implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.tukaani:xz:1.10")
+    // Servidor FTP para pasar archivos desde el PC por Wi‑Fi (Apache 2.0).
+    implementation("org.apache.ftpserver:ftpserver-core:1.2.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.15.1")

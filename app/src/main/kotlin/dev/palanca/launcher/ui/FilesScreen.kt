@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -153,6 +154,35 @@ class FilesScreen : Screen, Closable {
         })
     }
 
+    /** Trabajo largo en segundo plano con la misma barra de progreso que copiar. */
+    private fun background(label: String, done: String, work: (cancel: () -> Boolean, progress: (Long, Long) -> Unit) -> String?) {
+        if (busy != null) return
+        cancelled = false; busy = label; progress = 0f
+        job = Env.scope.launch {
+            val error = withContext(Dispatchers.IO) { work({ cancelled }) { d, t -> progress = if (t > 0) d.toFloat() / t else 0f } }
+            busy = null; progress = 0f; pane.marked = emptySet(); reloadAll()
+            Actions.toast(error ?: done)
+        }
+    }
+
+    private fun compress(ext: String) {
+        val sources = pane.targets()
+        if (sources.isEmpty()) return
+        val base = if (sources.size == 1) sources[0].nameWithoutExtension.ifEmpty { sources[0].name } else pane.dir.name.ifEmpty { "archivos" }
+        val dest = Files.freeName(pane.dir, "$base.$ext")
+        background("Comprimiendo en ${dest.name}", "Creado ${dest.name}") { cancel, progress ->
+            dev.palanca.launcher.data.Archives.compress(sources, dest, cancel, progress)
+        }
+    }
+
+    private fun extract(here: Boolean) {
+        val archive = pane.current()?.takeIf { dev.palanca.launcher.data.Archives.canExtract(it) } ?: return
+        val dest = Files.freeName(if (here) pane.dir else other.dir, archive.nameWithoutExtension)
+        background("Extrayendo ${archive.name}", "Extraído en ${dest.name}") { cancel, progress ->
+            dev.palanca.launcher.data.Archives.extract(archive, dest, cancel, progress)
+        }
+    }
+
     private fun properties() {
         val files = pane.targets()
         if (files.isEmpty()) return
@@ -163,7 +193,7 @@ class FilesScreen : Screen, Closable {
     }
 
     private fun actions() = MenuScreen("ARCHIVOS", pane.targets().let { if (it.size == 1) it[0].name else "${it.size} elementos" }) {
-        val target = other.dir.name.ifEmpty { "otro panel" }
+        val target = Files.roots().firstOrNull { it.second.absolutePath == other.dir.absolutePath }?.first ?: other.dir.name.ifEmpty { "otro panel" }
         listOfNotNull(
             pane.current()?.takeIf { !it.isDirectory }?.let { MenuItem("Abrir con…") { Files.open(it) } },
             MenuItem("Copiar a «$target»") { transfer(false) },
@@ -171,6 +201,10 @@ class FilesScreen : Screen, Closable {
             if (pane.targets().size == 1) MenuItem("Renombrar") { rename() } else null,
             MenuItem("Nueva carpeta aquí") { newFolder() },
             MenuItem("Tamaño") { properties() },
+            pane.current()?.takeIf { dev.palanca.launcher.data.Archives.canExtract(it) }?.let { MenuItem("Extraer aquí") { extract(true) } },
+            pane.current()?.takeIf { dev.palanca.launcher.data.Archives.canExtract(it) }?.let { MenuItem("Extraer en «$target»") { extract(false) } },
+            MenuItem("Comprimir en ZIP (rápido)") { compress("zip") },
+            MenuItem("Comprimir en 7z (ocupa menos)") { compress("7z") },
             MenuItem("Mandar a la papelera") { trash() },
             MenuItem(if (hidden) "Ocultar archivos ocultos" else "Mostrar archivos ocultos") { hidden = !hidden; reloadAll() },
         )
@@ -184,7 +218,8 @@ class FilesScreen : Screen, Closable {
                 Files.sd()?.let { "Instaladores (SD)" to File(it, "Instaladores") }?.takeIf { it.second.exists() },
             ) + Files.trashes().map { ("Papelera" + (if (it.absolutePath.startsWith(Files.internal.absolutePath)) "" else " (SD)")) to it }
         list.map { (name, dir) -> MenuItem(name) { pane.dir = dir; pane.sel = 0; pane.marked = emptySet(); hidden = hidden || dir.name.startsWith("."); pane.load(hidden = hidden) } } +
-            MenuItem("Limpieza") { Env.nav.push(CleanScreen()) }
+            MenuItem("Limpieza") { Env.nav.push(CleanScreen()) } +
+            MenuItem("Servidor FTP", if (dev.palanca.launcher.system.FtpService.state.value.running) "encendido" else "") { Env.nav.push(FtpScreen()) }
     }
 
     override fun onPad(e: PadEvent): Boolean {
@@ -415,3 +450,66 @@ class CleanScreen : Screen, Closable {
         }
     }
 }
+
+/**
+ * Servidor FTP: A lo enciende o apaga, ◀ ▶ elige qué se comparte (memoria interna o SD).
+ * Muestra la dirección, el usuario y la contraseña para escribirlos en el PC.
+ */
+class FtpScreen : Screen, Closable {
+    override val overlay get() = true
+    override var closing by mutableStateOf(false)
+    private val roots = Files.roots()
+    private var root by mutableIntStateOf(0)
+
+    private fun toggle() {
+        val s = dev.palanca.launcher.system.FtpService.state.value
+        if (s.running) dev.palanca.launcher.system.FtpService.stop(Env.ctx)
+        else {
+            if (!Files.hasAccess()) Files.requestAccess()
+            dev.palanca.launcher.system.FtpService.start(Env.ctx, roots[root].second.absolutePath)
+        }
+    }
+
+    override fun onPad(e: PadEvent): Boolean {
+        if (e.long) return true
+        val running = dev.palanca.launcher.system.FtpService.state.value.running
+        when (e.btn) {
+            Btn.LEFT -> if (!running) root = (root - 1 + roots.size) % roots.size
+            Btn.RIGHT -> if (!running) root = (root + 1) % roots.size
+            Btn.A -> toggle()
+            Btn.B -> Env.nav.pop()
+            else -> Unit
+        }
+        return true
+    }
+
+    @Composable
+    override fun Content() {
+        val accent = LocalAccent.current
+        val s by dev.palanca.launcher.system.FtpService.state.collectAsState()
+        Popup(TransformOrigin(0.5f, 0.5f), closing, { Env.nav.pop() }) {
+            Window(Modifier.align(Alignment.Center).width(860.dp)) {
+                T("Servidor FTP", 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+                T("Para pasar archivos entre el PC y la consola por Wi‑Fi, sin cable.", 14, P.Dim, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
+                ListRow("Compartir", roots[root].first, !s.running, arrows = !s.running)
+                Spacer(Modifier.height(4.dp))
+                ListRow(if (s.running) "Encendido" else "Apagado", if (s.running) "A para apagar" else "A para encender", true) { DropSwitch(s.running) }
+                Spacer(Modifier.height(12.dp))
+                if (s.running) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                        Label("En el PC, abre el Explorador de archivos y escribe en la barra de direcciones")
+                        T(s.address, 30, accent, mono = true, modifier = Modifier.padding(vertical = 6.dp))
+                        Row {
+                            Column(Modifier.weight(1f)) { Label("Usuario"); T(dev.palanca.launcher.system.FtpService.USER, 22, P.Ink, mono = true) }
+                            Column(Modifier.weight(1f)) { Label("Contraseña"); T(s.password, 22, P.Ink, mono = true) }
+                        }
+                        T("Sigue encendido aunque salgas de Heaven (verás una notificación). Apágalo al terminar.", 13, P.Dim, maxLines = 2, modifier = Modifier.padding(top = 10.dp))
+                    }
+                } else s.error?.let { T("No se pudo encender: $it", 14, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp)) }
+                Spacer(Modifier.height(12.dp))
+                HintBar(listOf("A" to if (s.running) "Apagar" else "Encender") + (if (s.running) emptyList() else listOf("◀ ▶" to "Qué compartir")) + listOf("B" to "Cerrar"))
+            }
+        }
+    }
+}
+
