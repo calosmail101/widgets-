@@ -506,7 +506,10 @@ class HomeScreen : Screen {
                             Spacer(Modifier.height(4.dp))
                             T(last.labelIn(cfg), 20, weight = FontWeight.Medium)
                             Spacer(Modifier.height(2.dp))
-                            T(ago(usage.last) + if (usage.lastSessionMs > 0) " · sesión de ${duration(usage.lastSessionMs)}" else "", 13, P.Dim)
+                            // Si es un juego, el tiempo jugado esta semana (también lo abierto desde Cocoon).
+                            val week = if (game) remember(last.pkg, usage.last) { dev.palanca.launcher.system.Playtime.summary(7).firstOrNull { it.first == last.pkg }?.second } else null
+                            T(ago(usage.last) + (if (usage.lastSessionMs > 0) " · sesión de ${duration(usage.lastSessionMs)}" else "") +
+                                (week?.takeIf { it >= 60_000 }?.let { " · ${dev.palanca.launcher.system.Playtime.human(it)} esta semana" } ?: ""), 13, P.Dim)
                         }
                     }
                 }

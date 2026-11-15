@@ -100,13 +100,17 @@ object Playtime {
     }
 
     /** Copia las partidas de [pkg] en un ZIP con fecha; guarda las 3 últimas. Devuelve un mensaje. */
+    private fun saveDirs(pkg: String): List<File> = SAVES[pkg].orEmpty().mapNotNull { rel ->
+        if (rel.startsWith("sd:")) Files.sd()?.let { File(it, rel.removePrefix("sd:")) } else File(Files.internal, rel)
+    }.filter { it.isDirectory }
+
+    private fun label(pkg: String) = Env.apps.apps.value.firstOrNull { it.pkg == pkg }?.label ?: pkg
+    private fun folderFor(pkg: String) = File(backupRoot(), label(pkg).replace(Regex("[^\\p{L}\\p{N} ._-]"), ""))
+
     fun backup(pkg: String, force: Boolean = false): String {
-        val dirs = SAVES[pkg].orEmpty().mapNotNull { rel ->
-            if (rel.startsWith("sd:")) Files.sd()?.let { File(it, rel.removePrefix("sd:")) } else File(Files.internal, rel)
-        }.filter { it.isDirectory }
+        val dirs = saveDirs(pkg)
         if (dirs.isEmpty()) return "Sin partidas"
-        val label = Env.apps.apps.value.firstOrNull { it.pkg == pkg }?.label ?: pkg
-        val folder = File(backupRoot(), label.replace(Regex("[^\\p{L}\\p{N} ._-]"), "")).apply { mkdirs() }
+        val folder = folderFor(pkg).apply { mkdirs() }
         val print = fingerprint(dirs)
         val mark = File(folder, ".huella")
         if (!force && mark.exists() && mark.readText() == print) return "Sin cambios"
@@ -119,6 +123,36 @@ object Playtime {
         folder.listFiles { f -> f.extension == "zip" }.orEmpty().sortedByDescending { it.name }.drop(KEEP).forEach { it.delete() }
         Files.notifyChanged(listOf(zip.absolutePath))
         return "Partidas copiadas"
+    }
+
+    /** Juegos con copias guardadas, con sus copias de la más nueva a la más vieja. */
+    fun backups(): List<Pair<String, List<File>>> = SAVES.keys.mapNotNull { pkg ->
+        val zips = folderFor(pkg).listFiles { f -> f.extension == "zip" }.orEmpty().sortedByDescending { it.name }
+        if (zips.isEmpty()) null else pkg to zips
+    }
+
+    /**
+     * Restaura una copia: cierra el juego, guarda la partida actual (por si acaso), vacía sus carpetas
+     * de partidas y extrae la copia elegida en su sitio. Devuelve un mensaje para el usuario.
+     */
+    fun restore(pkg: String, zip: File): String {
+        val dirs = saveDirs(pkg)
+        if (dirs.isEmpty()) return "No se encontró la carpeta de partidas de ${label(pkg)}"
+        Privileged.run("am force-stop $pkg")
+        Thread.sleep(800)
+        // La copia elegida se aparta primero: guardar la partida actual puede borrar la copia más vieja
+        // (se guardan solo 3) y esa podría ser justo la que se quiere restaurar.
+        val chosen = File(Env.ctx.cacheDir, "restaurar.zip")
+        zip.copyTo(chosen, overwrite = true)
+        // La partida actual se guarda antes de tocar nada (aunque no haya cambiado).
+        val saved = backup(pkg, force = true)
+        if (saved != "Partidas copiadas") { chosen.delete(); return "No se pudo guardar la partida actual: $saved" }
+        var base = dirs.first().parentFile!!
+        while (dirs.any { !it.absolutePath.startsWith(base.absolutePath + File.separator) }) base = base.parentFile ?: break
+        dirs.forEach { d -> d.listFiles().orEmpty().forEach { it.deleteRecursively() } }
+        val error = Archives.extract(chosen, base, { false }) { _, _ -> }
+        chosen.delete()
+        return error ?: "Partida de ${label(pkg)} restaurada (${zip.nameWithoutExtension.replace('_', ' ')})"
     }
 
     /** Copia ahora las partidas de todos los juegos que tengan; devuelve cuántos se copiaron. */

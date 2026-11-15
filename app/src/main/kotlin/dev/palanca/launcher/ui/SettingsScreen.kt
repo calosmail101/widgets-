@@ -225,6 +225,7 @@ private fun sections(): List<Section> = listOf(
         listOf(
             Act("Exportar tema") { Backup.export(themeOnly = true) },
             Act("Exportar copia completa") { Backup.export(themeOnly = false) },
+            Act("Restaurar partidas") { Env.nav.push(restoreMenu()) },
             Act("Copiar partidas ahora", { "en la SD › Backups/Partidas · se hace solo al salir de un juego" }) {
                 Actions.toast("Copiando partidas…")
                 Env.scope.launch { val n = withContext(Dispatchers.IO) { dev.palanca.launcher.system.Playtime.backupAll() }; Actions.toast(if (n > 0) "Partidas copiadas de $n juego(s)" else "No había partidas nuevas que copiar") }

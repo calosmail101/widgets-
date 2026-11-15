@@ -514,3 +514,28 @@ class FtpScreen : Screen, Closable {
     }
 }
 
+
+/** Restaurar partidas: juego → copia (de la más nueva a la más vieja) → confirmar. */
+fun restoreMenu() = MenuScreen("PARTIDAS", "Restaurar una copia") {
+    val list = dev.palanca.launcher.system.Playtime.backups()
+    if (list.isEmpty()) listOf(MenuItem("Todavía no hay copias de partidas", "") {})
+    else list.map { (pkg, zips) ->
+        val name = Env.apps.apps.value.firstOrNull { it.pkg == pkg }?.label ?: pkg
+        MenuItem(name, "${zips.size} copia(s)") {
+            Env.nav.push(MenuScreen("COPIAS", name) {
+                zips.map { zip ->
+                    val date = zip.nameWithoutExtension.replace('_', ' ').replace(Regex("(\\d{2})-(\\d{2})$"), "\$1:\$2")
+                    MenuItem(date, Files.human(zip.length())) {
+                        Env.nav.push(confirm("¿Restaurar la partida del $date?", "Se cierra $name y antes se guarda la partida actual.", "Restaurar") {
+                            Actions.toast("Restaurando…")
+                            Env.scope.launch {
+                                val msg = withContext(Dispatchers.IO) { dev.palanca.launcher.system.Playtime.restore(pkg, zip) }
+                                Actions.toast(msg)
+                            }
+                        })
+                    }
+                }
+            })
+        }
+    }
+}

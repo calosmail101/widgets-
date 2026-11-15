@@ -69,6 +69,9 @@ class PointerService : AccessibilityService() {
     private var select = false
     private var startKey = false
     private var shotCombo = false
+    private var xKey = false
+    private var panelCombo = false
+    private val panel by lazy { GamePanel(this) }
     private var hudCombo = false
     private var hud: HudView? = null
     private var hudJob: kotlinx.coroutines.Job? = null
@@ -94,7 +97,7 @@ class PointerService : AccessibilityService() {
     }
     override fun onInterrupt() = Unit
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        setActive(false); if (hud != null) toggleHud(); instance = null
+        setActive(false); if (hud != null) toggleHud(); panel.close(); instance = null
         return super.onUnbind(intent)
     }
 
@@ -112,6 +115,10 @@ class PointerService : AccessibilityService() {
         // Captura: L1 + R1 + START en cualquier app. Tampoco se consumen.
         if (event.keyCode == KeyEvent.KEYCODE_BUTTON_START) startKey = down
         if (l1 && r1 && startKey) { if (!shotCombo) { shotCombo = true; Playtime.screenshot() } } else shotCombo = false
+        // Panel rápido dentro del juego: L1 + R1 + X lo abre o lo cierra; abierto, maneja la cruceta y B.
+        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_X) xKey = down
+        if (l1 && r1 && xKey) { if (!panelCombo) { panelCombo = true; panel.toggle() } } else panelCombo = false
+        if (panel.open && panel.handleKey(event)) return true
         val toggleKey = if (Env.ready) Env.cfg.value.pointerKey else 0
         if (toggleKey != 0) {
             // Botón propio elegido por el usuario: enciende o apaga al soltarlo y nunca llega a la app.
