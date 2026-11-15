@@ -143,6 +143,7 @@ class FilesScreen : Screen, Closable {
                 val target = File(f.parentFile, name)
                 if (target.exists()) Actions.toast("Ya existe algo con ese nombre")
                 else if (!f.renameTo(target)) Actions.toast("No se pudo renombrar")
+                else Files.notifyChanged(Files.paths(target) + f.absolutePath)
                 pane.load(target, hidden)
             }
         })

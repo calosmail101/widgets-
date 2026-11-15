@@ -67,6 +67,19 @@ object Files {
         }
     }
 
+    /** Rutas de todos los archivos bajo [f] (o el propio archivo). Se piden antes de mover o borrar. */
+    fun paths(f: File, limit: Int = 5000): List<String> = f.walkTopDown().take(limit).map { it.absolutePath }.toList()
+
+    /**
+     * Avisa al índice multimedia de Android de lo que cambió. Sin esto, el gestor de archivos de Android
+     * y la galería siguen enseñando lo borrado o movido (leen ese índice, no el disco). Escanear una
+     * ruta que ya no existe la quita del índice.
+     */
+    fun notifyChanged(paths: Collection<String>) {
+        if (paths.isEmpty()) return
+        paths.chunked(400).forEach { chunk -> android.media.MediaScannerConnection.scanFile(Env.ctx, chunk.toTypedArray(), null, null) }
+    }
+
     fun size(f: File): Long = if (f.isDirectory) f.walkTopDown().filter { it.isFile }.sumOf { it.length() } else f.length()
     fun count(f: File): Int = if (f.isDirectory) f.walkTopDown().count { it.isFile } else 1
 
@@ -86,6 +99,14 @@ object Files {
      * [progress] recibe bytes hechos, bytes totales y el archivo actual. Devuelve los errores.
      */
     fun transfer(sources: List<File>, dest: File, move: Boolean, cancel: () -> Boolean, progress: (Long, Long, String) -> Unit): List<String> {
+        val before = if (move) sources.flatMap { paths(it) } else emptyList()
+        val targets = ArrayList<File>()
+        val errors = transferInner(sources, dest, move, cancel, progress, targets)
+        notifyChanged(before + targets.flatMap { paths(it) })
+        return errors
+    }
+
+    private fun transferInner(sources: List<File>, dest: File, move: Boolean, cancel: () -> Boolean, progress: (Long, Long, String) -> Unit, targets: MutableList<File>): List<String> {
         val errors = ArrayList<String>()
         val total = sources.sumOf { size(it) }
         var done = 0L
@@ -93,6 +114,7 @@ object Files {
             if (cancel()) break
             if (dest.absolutePath.startsWith(src.absolutePath + "/") || dest == src) { errors += "${src.name}: no se puede copiar dentro de sí misma"; continue }
             val target = freeName(dest, src.name)
+            targets += target
             if (move && sameVolume(src, dest) && src.renameTo(target)) { done += size(target); progress(done, total, src.name); continue }
             val ok = runCatching {
                 src.walkTopDown().forEach { f ->
@@ -134,9 +156,13 @@ object Files {
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
         for (f in files) {
             val root = roots().firstOrNull { f.absolutePath.startsWith(it.second.absolutePath) }?.second ?: internal
-            val bin = File(File(root, ".HeavenPapelera"), stamp).apply { mkdirs() }
+            val trashRoot = File(root, ".HeavenPapelera")
+            val bin = File(trashRoot, stamp).apply { mkdirs() }
+            // Que la galería y los reproductores no indexen lo que hay en la papelera.
+            runCatching { File(trashRoot, ".nomedia").createNewFile() }
+            val gone = paths(f)
             val target = freeName(bin, f.name)
-            if (f.renameTo(target)) File(bin, target.name + ".origen").writeText(f.absolutePath)
+            if (f.renameTo(target)) { File(bin, target.name + ".origen").writeText(f.absolutePath); notifyChanged(gone) }
             else errors += "${f.name}: no se pudo mover a la papelera"
         }
         return errors

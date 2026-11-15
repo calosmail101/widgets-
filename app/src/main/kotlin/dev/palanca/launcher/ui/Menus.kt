@@ -144,7 +144,10 @@ fun widgetMenu(slot: WidgetSlot) = MenuScreen("WIDGET", Env.widgets.info(slot.id
         MenuItem("Más estrecho", keep = true) { edit { l, i -> l[i] = l[i].copy(cols = (l[i].cols - 1).coerceAtLeast(1)) } },
         MenuItem("Mover a la izquierda", keep = true) { edit { l, i -> if (i > 0) l.add(i - 1, l.removeAt(i)) } },
         MenuItem("Mover a la derecha", keep = true) { edit { l, i -> if (i < l.lastIndex) l.add(i + 1, l.removeAt(i)) } },
+        if (Env.cfg.value.homeWidget == slot.id) MenuItem("Quitar de Inicio") { Env.cfg.update { it.copy(homeWidget = -1) } }
+        else MenuItem("Mostrar en Inicio") { Env.cfg.update { it.copy(homeWidget = slot.id) } },
         MenuItem("Quitar") {
+            Env.cfg.update { if (it.homeWidget == slot.id) it.copy(homeWidget = -1) else it }
             edit { l, i -> l.removeAt(i) }
             runCatching { Env.widgets.host.deleteAppWidgetId(slot.id) }
         },

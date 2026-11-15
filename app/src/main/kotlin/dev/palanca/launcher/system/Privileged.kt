@@ -255,6 +255,17 @@ object Music {
     private var level = 0f
     private var wanted = false
     private var failures = 0
+    /** Nombre de la canción de fondo que suena ahora («» si no suena ninguna). */
+    val title = kotlinx.coroutines.flow.MutableStateFlow("")
+    val playing get() = runCatching { player?.isPlaying == true }.getOrDefault(false)
+    /** Sesión de audio del reproductor de fondo (para el visualizador); 0 si no hay. */
+    val session get() = runCatching { player?.audioSessionId ?: 0 }.getOrDefault(0)
+
+    private fun nameOf(uri: Uri): String = runCatching {
+        Env.ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()?.substringBeforeLast('.')?.ifBlank { null } ?: "Música de Heaven"
 
     private val fade = object : Runnable {
         override fun run() {
@@ -282,6 +293,7 @@ object Music {
     private fun start() {
         if (tracks.isEmpty() || failures > tracks.size) return
         val uri = Uri.parse(tracks[index % tracks.size])
+        title.value = nameOf(uri)
         runCatching {
             val p = MediaPlayer()
             p.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())

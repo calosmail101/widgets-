@@ -43,7 +43,7 @@ object Archives {
                 }
             }
         }
-        if (cancel()) { dest.delete(); "Cancelado" } else null
+        if (cancel()) { dest.delete(); "Cancelado" } else { Files.notifyChanged(listOf(dest.absolutePath)); null }
     }.getOrElse { dest.delete(); it.message ?: "No se pudo comprimir" }
 
     /**
@@ -91,6 +91,7 @@ object Archives {
                 }
             }
         }
+        Files.notifyChanged(Files.paths(destDir))
         if (cancel()) "Cancelado" else null
     }.getOrElse { it.message ?: "No se pudo extraer" }
 

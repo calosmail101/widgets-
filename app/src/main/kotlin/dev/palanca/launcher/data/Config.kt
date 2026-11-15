@@ -109,6 +109,8 @@ data class Config(
     val profiles: Map<String, Profile> = emptyMap(),
     /** Aviso si la consola se calienta mucho mientras se juega. */
     val heatAlert: Boolean = true,
+    /** Widget (id de la página de widgets) que se muestra también en Inicio, bajo los botones; -1 = ninguno. */
+    val homeWidget: Int = -1,
 ) {
     fun look(f: Look.() -> Look) = copy(look = look.f())
     fun icon(key: String, f: IconOverride.() -> IconOverride): Config {

@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Visualizador de la música de Inicio: Android pide el permiso de audio para ver la forma de onda de lo que suena
+         (lee la salida del altavoz, no el micrófono). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Explorador de archivos: memoria interna y tarjeta SD enteras. Heaven se lo concede con PServer. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <!-- Servidor FTP: sigue funcionando mientras se usa otra app (servicio en primer plano). -->
@@ -67,6 +71,17 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/pointer_service" />
         </service>
+        <!-- Leer qué suena en Spotify u otra app (sesiones multimedia). -->
+        <service
+            android:name=".system.MediaListener"
+            android:exported="true"
+            android:label="Heaven · música en Inicio"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".system.FtpService"
             android:exported="false"

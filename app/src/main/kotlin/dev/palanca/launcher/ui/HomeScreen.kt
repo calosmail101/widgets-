@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -139,6 +140,8 @@ class HomeScreen : Screen {
     private var dock by mutableIntStateOf(-1) // -1 = todavía sin elegir: se usa la app del centro
     private var card by mutableIntStateOf(0)
     private var widget by mutableIntStateOf(0)
+    /** Botón con el foco dentro de la zona 2: 0 = jugar · 1 = música · 2 = archivos · 3 = widget de Inicio. */
+    private var button by mutableIntStateOf(0)
 
     fun reset() { page = 0; zone = 0; dock = -1 }
 
@@ -180,16 +183,32 @@ class HomeScreen : Screen {
         val stat = card - offset // -1 = tarjeta "continuar"
 
         when (zone) {
-            2 -> when (e.btn) {
-                Btn.RIGHT -> if (pins.isNotEmpty()) zone = 0 else if (total > 0) zone = 1
-                Btn.UP -> if (total > 0) zone = 1
-                // Sin apps fijadas no hay carrusel: bajar abre directamente todas las apps.
-                Btn.DOWN -> if (pins.isNotEmpty()) zone = 0 else Env.nav.push(DrawerScreen())
-                Btn.B -> if (pins.isNotEmpty()) zone = 0
-                Btn.A -> playApp(cfg)?.let { Actions.launch(it, 0.18f to 0.62f) } ?: Env.nav.push(playAppPicker())
-                Btn.X -> Env.nav.push(playAppPicker())
-                Btn.LEFT -> Unit
-                else -> return false
+            2 -> {
+                val slot = homeWidget(cfg)
+                if (button == 3 && slot == null) button = 1
+                fun below() { if (pins.isNotEmpty()) zone = 0 else Env.nav.push(DrawerScreen()) }
+                when (e.btn) {
+                    // 0 jugar · 2 archivos (a su derecha) · 1 música (debajo) · 3 widget (más abajo).
+                    Btn.RIGHT -> if (button == 0) button = 2 else if (pins.isNotEmpty()) zone = 0 else if (total > 0) zone = 1
+                    Btn.LEFT -> if (button == 2) button = 0
+                    Btn.UP -> when (button) { 0, 2 -> if (total > 0) zone = 1; 3 -> button = 1; else -> button = 0 }
+                    // Sin apps fijadas no hay carrusel: bajar abre directamente todas las apps.
+                    Btn.DOWN -> when (button) { 0, 2 -> button = 1; 1 -> if (slot != null) button = 3 else below(); else -> below() }
+                    Btn.B -> if (pins.isNotEmpty()) zone = 0
+                    Btn.A -> when (button) {
+                        0 -> playApp(cfg)?.let { Actions.launch(it, 0.18f to 0.62f) } ?: Env.nav.push(playAppPicker())
+                        1 -> musicAction()
+                        2 -> Env.nav.push(FilesScreen())
+                        else -> slot?.let(::openWidgetApp)
+                    }
+                    Btn.X -> when (button) {
+                        0 -> Env.nav.push(playAppPicker())
+                        1 -> openMusicApp()
+                        3 -> slot?.let { Env.nav.push(widgetMenu(it)) }
+                        else -> Unit
+                    }
+                    else -> return false
+                }
             }
             1 -> when (e.btn) {
                 Btn.UP -> if (stat >= cols) card -= cols else if (stat >= 0 && offset == 1) card = 0
@@ -221,6 +240,21 @@ class HomeScreen : Screen {
             }
         }
         return true
+    }
+
+    /** Widget de la página de widgets elegido para mostrarse también en Inicio. */
+    private fun homeWidget(cfg: Config) = cfg.widgets.firstOrNull { it.id == cfg.homeWidget }
+
+    /** A en el óvalo de música: pausa o sigue lo que suena en otra app; si no suena nada, abre Spotify. */
+    private fun musicAction() {
+        if (dev.palanca.launcher.system.Media.now.value != null) dev.palanca.launcher.system.Media.playPause() else openMusicApp()
+    }
+
+    /** X en el óvalo de música: abre la app que está sonando (o Spotify). */
+    private fun openMusicApp() {
+        val pkg = dev.palanca.launcher.system.Media.now.value?.pkg ?: "com.spotify.music"
+        val app = Env.apps.apps.value.firstOrNull { it.pkg == pkg }
+        if (app != null) Actions.launch(app) else Actions.toast("No hay ninguna app de música abierta")
     }
 
     /** Abre la app a la que pertenece un widget. */
@@ -292,16 +326,36 @@ class HomeScreen : Screen {
                             Piece("reloj", Modifier.tap(onLong = { Env.nav.push(HomeEditScreen()) }) { }) {
                                 Column {
                                     // Alto fijo: una fuente más alta o más baja no descoloca lo demás.
-                                    val clockHeight = if (look.clockSeconds) 104.dp else 138.dp
-                                    Box(Modifier.height(clockHeight * 1.15f), contentAlignment = Alignment.CenterStart) {
+                                    // Con un widget en Inicio la columna lleva más cosas: el reloj se hace algo más pequeño.
+                                    val base = if (look.clockSeconds) 104.dp else 138.dp
+                                    // El «apilado» son dos líneas: se dibuja algo más pequeño para que quepa con los botones.
+                                    val styleScale = if (look.clockStyle == "apilado") 0.8f else 1f
+                                    val clockHeight = (if (homeWidget(cfg) != null) base * 0.72f else base) * styleScale
+                                    // Cada estilo ocupa su alto real (el «apilado» son dos líneas): así nunca invade lo de arriba.
+                                    val boxFactor = when (look.clockStyle) { "apilado" -> 1.42f; "analogico" -> 1.0f; else -> 1.15f }
+                                    Box(Modifier.height(clockHeight * boxFactor), contentAlignment = Alignment.CenterStart) {
                                         ClockView(look, clockHeight, now, Modifier.wrapContentHeight(unbounded = true))
                                     }
                                     if (look.clockDate) T(dateText(now).replaceFirstChar { it.uppercase() }, 21, P.Ink.copy(alpha = 0.85f), modifier = Modifier.padding(top = 8.dp), shadow = true)
                                 }
                             }
-                            Spacer(Modifier.height(24.dp))
+                            Spacer(Modifier.height(if (homeWidget(cfg) != null) 12.dp else 22.dp))
                             Piece("botones") {
-                                PlayButton(apps.firstOrNull { it.key == cfg.playApp }, zone == 2)
+                                Column(Modifier.width(IntrinsicSize.Max)) {
+                                    // Jugar y, a su derecha, Archivos; debajo, la música a todo el ancho de esa fila.
+                                    // Así queda un hueco claro entre los botones y el carrusel.
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        PlayButton(apps.firstOrNull { it.key == cfg.playApp }, zone == 2 && button == 0)
+                                        Spacer(Modifier.width(16.dp))
+                                        FilesButton(zone == 2 && button == 2) { zone = 2; button = 2; Env.nav.push(FilesScreen()) }
+                                    }
+                                    Spacer(Modifier.height(16.dp))
+                                    MusicPill(zone == 2 && button == 1, Modifier.fillMaxWidth()) { zone = 2; button = 1; musicAction() }
+                                }
+                            }
+                            homeWidget(cfg)?.let { slot ->
+                                Spacer(Modifier.height(16.dp))
+                                Piece("widget") { HomeWidget(slot, zone == 2 && button == 3) }
                             }
                         }
                         Column(Modifier.width(RIGHT_COLUMN).fillMaxHeight()) {
@@ -314,7 +368,10 @@ class HomeScreen : Screen {
                     HintBar(
                         when {
                             zone == 1 -> listOf("A" to "Abrir / cambiar", "B" to "Volver")
-                            zone == 2 -> listOf("A" to "Jugar", "X" to "Elegir app")
+                            zone == 2 && button == 0 -> listOf("A" to "Jugar", "X" to "Elegir app")
+                            zone == 2 && button == 1 -> listOf("A" to (if (dev.palanca.launcher.system.Media.now.value?.playing == true) "Pausa" else "Reproducir"), "X" to "Abrir la app")
+                            zone == 2 && button == 2 -> listOf("A" to "Archivos")
+                            zone == 2 -> listOf("A" to "Abrir la app", "X" to "Opciones")
                             else -> listOf("A" to "Abrir", "▼" to "Todas las apps", "X" to "Opciones", "Y" to "Buscar", "SELECT" to "CNTRL", "START" to "Custom")
                         },
                     )
