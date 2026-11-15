@@ -92,7 +92,8 @@ private fun pointerKeyName(code: Int): String = when {
 /** Asigna una tecla al M2 (con PServer) y la elige como botón del puntero. */
 private fun useM2ForPointer() {
     Env.scope.launch {
-        if (DeviceModes.m2Key() != DeviceModes.M2_KEY && !withContext(Dispatchers.IO) { DeviceModes.setM2Key(DeviceModes.M2_KEY) }) {
+        // Siempre se envía: aunque el valor ya esté guardado, el mando puede no haberlo recibido todavía.
+        if (!withContext(Dispatchers.IO) { DeviceModes.setM2Key(DeviceModes.M2_KEY) }) {
             Actions.toast("Esta consola no permite asignar el M2"); return@launch
         }
         repeat(12) { if (DeviceModes.m2Key() == DeviceModes.M2_KEY) return@repeat; delay(250) }
@@ -231,6 +232,7 @@ private fun sections(): List<Section> = listOf(
         "Sistema", "Heaven",
         listOf(
             Act("Usar Heaven como pantalla de inicio") { Actions.open(Settings.ACTION_HOME_SETTINGS) },
+            Toggle("Avisar si la consola se calienta jugando (45 °C)", { it.heatAlert }) { c, v -> c.copy(heatAlert = v) },
             Act("Ajustes de Android") { Actions.open(Settings.ACTION_SETTINGS) },
             Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
             Act("Memoria que usa Heaven", { "${android.os.Debug.getPss() / 1024} MB" }) { },

@@ -38,6 +38,7 @@ import dev.palanca.launcher.data.categoryIn
 import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.Actions
+import dev.palanca.launcher.system.DeviceModes
 
 /** Fondo de las ventanas flotantes: un punto más claro que los paneles. */
 val WINDOW = Color(0xFF191A1F)
@@ -98,9 +99,20 @@ fun appMenu(app: AppEntry) = MenuScreen("APP", app.label) {
     val cfg = Env.cfg.value
     val pinned = app.key in cfg.pinned
     val hidden = app.key in cfg.hidden
-    listOf(
+    // Reordenar el carrusel de Inicio (el stick derecho ahora solo lo recorre).
+    fun move(dir: Int) = Env.cfg.update { c ->
+        val list = c.pinned.toMutableList()
+        val i = list.indexOf(app.key); val j = i + dir
+        if (i >= 0 && j in list.indices) list.add(j, list.removeAt(i))
+        c.copy(pinned = list)
+    }
+    val profile = cfg.profiles[app.pkg]
+    listOfNotNull(
         MenuItem("Abrir") { Actions.launch(app) },
         MenuItem(if (pinned) "Quitar de Inicio" else "Fijar en Inicio") { togglePin(app) },
+        if (pinned) MenuItem("Mover a la izquierda", keep = true) { move(-1) } else null,
+        if (pinned) MenuItem("Mover a la derecha", keep = true) { move(+1) } else null,
+        if (DeviceModes.performance() >= 0) MenuItem("Perfil de la consola", profileSummary(profile)) { Env.nav.push(ProfileScreen(app)) } else null,
         MenuItem("Editar icono") { Env.nav.push(IconEditorScreen(app)) },
         MenuItem("Categoría", app.categoryIn(cfg).title) { Env.nav.push(categoryMenu(app)) },
         MenuItem(if (hidden) "Mostrar en el cajón" else "Ocultar del cajón") {

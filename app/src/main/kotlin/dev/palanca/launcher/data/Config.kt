@@ -105,12 +105,25 @@ data class Config(
     /** Controles de la consola aprendidos con el detector (estilo de mando, modo de gatillos). */
     val learned: Map<String, Learned> = emptyMap(),
     val haptics: Boolean = true,
+    /** Perfil de la consola por app (paquete): se aplica al abrirla y se deshace al salir. */
+    val profiles: Map<String, Profile> = emptyMap(),
+    /** Aviso si la consola se calienta mucho mientras se juega. */
+    val heatAlert: Boolean = true,
 ) {
     fun look(f: Look.() -> Look) = copy(look = look.f())
     fun icon(key: String, f: IconOverride.() -> IconOverride): Config {
         val next = (icons[key] ?: IconOverride()).f()
         return copy(icons = if (next == IconOverride()) icons - key else icons + (key to next))
     }
+}
+
+/**
+ * Ajustes de la consola para una app. null = no tocar ese ajuste.
+ * performance: 0/1/2 · fan: 4 Smart, 5 Sport, 6 Personalizado · hz: 60/120.
+ */
+@Serializable
+data class Profile(val performance: Int? = null, val fan: Int? = null, val fanSpeed: Int? = null, val hz: Int? = null) {
+    fun isEmpty() = performance == null && fan == null && hz == null
 }
 
 /**

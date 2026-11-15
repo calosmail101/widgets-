@@ -179,13 +179,24 @@ object DeviceModes {
     // ---- Botones traseros (Retroid): «remap_custom_to_m1_value» y «…_m2_value» guardan la tecla que envían ----
 
     /**
-     * Tecla que Heaven asigna al M2 para el puntero: un botón de mando genérico que los juegos casi
-     * nunca usan. Con el valor de fábrica (0), el M2 no envía nada y no se puede capturar.
+     * Tecla que Heaven asigna al M2 para el puntero: BUTTON_Z, el valor de fábrica de Retroid para el M2.
+     * Con 0 (ninguna) el M2 no envía nada. Una tecla sin equivalente en el mando virtual de Retroid
+     * (por ejemplo BUTTON_16) se guarda pero el servicio de mapeo la descarta en silencio.
      */
-    const val M2_KEY = android.view.KeyEvent.KEYCODE_BUTTON_16
+    const val M2_KEY = android.view.KeyEvent.KEYCODE_BUTTON_Z
     fun backButtonsSupported() = text("remap_custom_to_m2_value") != null
     fun m2Key(): Int = read("remap_custom_to_m2_value")
-    fun setM2Key(code: Int) = write("remap_custom_to_m2_value", code)
+    /**
+     * Guardar el valor no basta: el panel de Retroid mete M1 y M2 en la configuración del mando
+     * (StandardGamepadConfig) y solo la envía al servicio de mapeo cuando el mando se recrea. Por eso,
+     * tras escribirlo, se cambia el estilo de mando un instante y se devuelve al que estaba.
+     */
+    fun setM2Key(code: Int): Boolean {
+        val flip = read("flip_button_layout").coerceIn(0, 1)
+        return write("remap_custom_to_m2_value", code) && Privileged.run(
+            "sh -c \"sleep 0.3; cmd settings put system flip_button_layout ${1 - flip}; sleep 1.2; cmd settings put system flip_button_layout $flip\"",
+        )
+    }
 
     val CHARGE = listOf(0 to "Sin límite", 1 to "Hasta el 80 %")
     fun chargeLimit(): Int = if (text("percent_80_charge_limit") == null) -1 else read("percent_80_charge_limit")

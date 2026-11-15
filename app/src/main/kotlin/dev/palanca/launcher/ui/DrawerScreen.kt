@@ -37,6 +37,7 @@ import dev.palanca.launcher.data.AppEntry
 import dev.palanca.launcher.data.Cat
 import dev.palanca.launcher.data.Config
 import dev.palanca.launcher.data.categoryIn
+import dev.palanca.launcher.data.labelIn
 import dev.palanca.launcher.input.Btn
 import dev.palanca.launcher.input.PadEvent
 import dev.palanca.launcher.system.Actions
@@ -176,7 +177,10 @@ class DrawerScreen : Screen, Closable {
             val rows = (items.size + cols - 1) / cols
             HintBar(
                 listOf("A" to "Abrir", "B" to "Volver", "X" to "Opciones", "SELECT" to "Fijar en Inicio"),
-                left = "${items.size} apps · fila $row de $rows",
+                // Con los nombres ocultos, la app enfocada se nombra aquí (los iconos de cristal se parecen entre sí).
+                left = items.getOrNull(sel.coerceIn(0, (items.size - 1).coerceAtLeast(0)))
+                    ?.takeIf { !cfg.look.labels }?.let { "${it.labelIn(cfg)} · fila $row de $rows" }
+                    ?: "${items.size} apps · fila $row de $rows",
             )
           }
         }

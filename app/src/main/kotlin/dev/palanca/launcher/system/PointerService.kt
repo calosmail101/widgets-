@@ -84,7 +84,12 @@ class PointerService : AccessibilityService() {
     private val wm get() = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     override fun onServiceConnected() { instance = this }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    /** Cada cambio de ventana dice qué app está delante: sirve para los perfiles por juego. */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        if (Env.ready) runCatching { Profiles.onForeground(pkg) }
+    }
     override fun onInterrupt() = Unit
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         setActive(false); if (hud != null) toggleHud(); instance = null

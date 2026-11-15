@@ -366,6 +366,99 @@ class QuickPanel : Screen, Closable {
     }
 }
 
+/** Resumen corto de un perfil para el menú de la app: «sin perfil» o «High · Sport · 120 Hz». */
+fun profileSummary(p: dev.palanca.launcher.data.Profile?): String {
+    if (p == null || p.isEmpty()) return "sin perfil"
+    return listOfNotNull(
+        p.performance?.let { DeviceModes.name(DeviceModes.PERFORMANCE, it).replace(" performance", "") },
+        p.fan?.let { DeviceModes.name(DeviceModes.FAN, it) },
+        p.hz?.let { "$it Hz" },
+    ).joinToString(" · ")
+}
+
+/**
+ * Perfil de la consola para una app: modo, ventilador y frecuencia de pantalla que se ponen al abrirla
+ * (también desde Cocoon u otro frontend) y se deshacen al volver. «Sin cambiar» deja ese ajuste como esté.
+ */
+class ProfileScreen(private val app: AppEntry) : Screen, Closable {
+    override val overlay get() = true
+    override var closing by mutableStateOf(false)
+    private var row by mutableIntStateOf(0)
+    private var p by mutableStateOf(Env.cfg.value.profiles[app.pkg] ?: dev.palanca.launcher.data.Profile())
+
+    // Cada fila: opciones con null = «Sin cambiar».
+    private val perfOptions = listOf<Int?>(null) + DeviceModes.PERFORMANCE.map { it.first }
+    private val fanOptions = listOf<Int?>(null) + DeviceModes.FAN.map { it.first }
+    private val hzOptions = listOf<Int?>(null) + DeviceModes.REFRESH.map { it.first }
+    private fun rows() = buildList { add("modo"); add("ventilador"); if (p.fan == 6) add("velocidad"); add("pantalla") }
+
+    private fun <T> cycle(options: List<T>, current: T, dir: Int): T =
+        options[(options.indexOf(current).coerceAtLeast(0) + dir + options.size) % options.size]
+
+    private fun save() = Env.cfg.update { c ->
+        c.copy(profiles = if (p.isEmpty()) c.profiles - app.pkg else c.profiles + (app.pkg to p))
+    }
+
+    private fun change(dir: Int) {
+        p = when (rows().getOrNull(row)) {
+            "modo" -> p.copy(performance = cycle(perfOptions, p.performance, dir))
+            "ventilador" -> p.copy(fan = cycle(fanOptions, p.fan, dir)).let { if (it.fan == 6 && it.fanSpeed == null) it.copy(fanSpeed = 50) else it }
+            "velocidad" -> p.copy(fanSpeed = ((p.fanSpeed ?: 50) + dir * 5).coerceIn(0, 100))
+            "pantalla" -> p.copy(hz = cycle(hzOptions, p.hz, dir))
+            else -> p
+        }
+        save()
+    }
+
+    override fun onPad(e: PadEvent): Boolean {
+        if (e.long) return true
+        val n = rows().size
+        when (e.btn) {
+            Btn.UP -> row = (row + n - 1) % n
+            Btn.DOWN -> row = (row + 1) % n
+            Btn.LEFT -> change(-1)
+            Btn.RIGHT, Btn.A -> change(+1)
+            // X borra el perfil entero.
+            Btn.X -> { p = dev.palanca.launcher.data.Profile(); save() }
+            Btn.B -> Env.nav.pop()
+            else -> Unit
+        }
+        return true
+    }
+
+    @Composable
+    override fun Content() {
+        val accent = LocalAccent.current
+        Popup(TransformOrigin(0.5f, 0.6f), closing, { Env.nav.pop() }) {
+            Window(Modifier.align(Alignment.Center).width(760.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp)) {
+                    AppIcon(app, 44.dp)
+                    Spacer(Modifier.width(14.dp))
+                    T("Perfil · ${app.label}", 24, weight = FontWeight.Medium)
+                }
+                T("Se aplica al abrir la app (también desde Cocoon) y se deshace al volver a Heaven.", 14, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
+                rows().forEachIndexed { i, r ->
+                    val on = i == row
+                    val tap = Modifier.tap { row = i; change(+1) }
+                    when (r) {
+                        "modo" -> ListRow("Modo", p.performance?.let { DeviceModes.name(DeviceModes.PERFORMANCE, it) } ?: "Sin cambiar", on, tap, arrows = true)
+                        "ventilador" -> ListRow("Ventilador", p.fan?.let { DeviceModes.name(DeviceModes.FAN, it) } ?: "Sin cambiar", on, tap, arrows = true)
+                        "velocidad" -> ListRow("Velocidad del ventilador", "", on, tap) {
+                            T("${p.fanSpeed ?: 50} %", 14, if (on) accent else P.Dim, mono = true)
+                            Spacer(Modifier.width(14.dp))
+                            DropSlider((p.fanSpeed ?: 50) / 100f, if (on) accent else P.Dim, Modifier.width(200.dp))
+                        }
+                        else -> ListRow("Pantalla", p.hz?.let { "$it Hz" } ?: "Sin cambiar", on, tap, arrows = true)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+                Spacer(Modifier.height(10.dp))
+                HintBar(listOf("◀ ▶" to "Cambiar", "X" to "Borrar perfil", "B" to "Cerrar"))
+            }
+        }
+    }
+}
+
 /** Luces de los sticks: encendido, color (rueda con el stick derecho) y brillo. */
 class LightsScreen : Screen, Closable {
     override val overlay get() = true
