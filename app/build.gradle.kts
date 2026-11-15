@@ -15,7 +15,12 @@ android {
         minSdk = 28
         targetSdk = 35
         versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 1
-        versionName = "0.1.0"
+        // El commit va en el nombre de la versión: así Custom › Sistema dice qué compilación hay instalada.
+        val commit = providers.exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim() }.getOrElse("").ifEmpty { "local" }
+        versionName = "0.1.0 · $commit"
     }
 
     // Clave fija dentro del repo: así cada APK (local o de CI) se instala encima del anterior.

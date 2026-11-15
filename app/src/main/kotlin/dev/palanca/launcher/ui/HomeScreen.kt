@@ -304,7 +304,7 @@ class HomeScreen : Screen {
                                     Box(Modifier.height(clockHeight * 1.15f), contentAlignment = Alignment.CenterStart) {
                                         ClockView(look, clockHeight, now, Modifier.wrapContentHeight(unbounded = true))
                                     }
-                                    if (look.clockDate) T(dateText(now).replaceFirstChar { it.uppercase() }, 21, P.Dim, modifier = Modifier.padding(top = 8.dp))
+                                    if (look.clockDate) T(dateText(now).replaceFirstChar { it.uppercase() }, 21, P.Ink.copy(alpha = 0.85f), modifier = Modifier.padding(top = 8.dp), shadow = true)
                                 }
                             }
                             Spacer(Modifier.height(24.dp))

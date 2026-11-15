@@ -102,6 +102,16 @@ class MainActivity : ComponentActivity(), HostBridge {
         super.onStop()
     }
 
+    /**
+     * Con un juego pesado abierto, Android cerraba Heaven por falta de memoria una y otra vez (12 veces
+     * en dos días en la Pocket 6). En segundo plano y con memoria justa, Heaven suelta la caché de iconos
+     * (unos 40 MB de imágenes) para pesar menos; al volver los redibuja.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) runCatching { Env.icons.trim() }
+    }
+
     override fun onResume() {
         super.onResume()
         Env.foreground.value = true

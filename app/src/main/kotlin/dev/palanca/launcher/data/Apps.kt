@@ -40,11 +40,16 @@ private val EMULATORS = listOf(
     "org.devmiyax.yabasanshiro", "com.github.eka2l1", "paulscode.android.mupen64plus", "io.github.mandarine3ds",
     "org.es_de", "rip.moth.cocoonshell", "com.magneticchen.daijishou",
     "org.pegasus_frontend", "net.kdt.pojavlaunch", "com.gamenative",
+    // Vistos en la Retroid Pocket 6 del usuario (15 nov 2026): no estaban y caían en Juegos o Apps.
+    "com.armsx2", "info.cemu", "xendroid", "app.gamenative", "com.xiaoji.egggame", "com.droiddeck",
+    "com.rfandango", "io.github.kalasyan.recompa",
 )
 private val GAME_HINTS = listOf(
     "com.limelight", "com.valvesoftware", "com.nvidia.geforcenow", "com.microsoft.xcloud",
     "com.microsoft.xboxone", "com.gamepass", "com.playstation.remoteplay", "com.steam", "dev.rewasd.artemis",
     "com.papi.artemis", "xyz.chiaki", "com.amazon.luna", "com.epicgames",
+    // Ports y recompilaciones nativas: son juegos, aunque no se declaren como tales.
+    "com.botwrecomp", "com.t6requiem",
 )
 
 /** Categoría automática. Función pura para poder probarla. */

@@ -215,7 +215,7 @@ class Navigator {
 fun T(
     text: String, size: Int = 16, color: Color = P.Ink, weight: FontWeight = FontWeight.Normal,
     mono: Boolean = false, modifier: Modifier = Modifier, maxLines: Int = 1, spacing: Float = 0f,
-    align: TextAlign = TextAlign.Start, outline: Float = 0f, tight: Boolean = false,
+    align: TextAlign = TextAlign.Start, outline: Float = 0f, tight: Boolean = false, shadow: Boolean = false,
 ) {
     val fonts = LocalFonts.current
     val scale = fonts.scale * LocalTextScale.current
@@ -224,6 +224,8 @@ fun T(
         style = TextStyle(
             color = color, fontSize = (size * scale).sp, fontFamily = if (mono) fonts.mono else fonts.ui,
             fontWeight = weight, letterSpacing = spacing.sp, textAlign = align,
+            // Sombra suave para el texto que va directamente sobre el fondo de pantalla (fecha de Inicio).
+            shadow = if (shadow) androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.75f), androidx.compose.ui.geometry.Offset(0f, 2f), 10f) else null,
             drawStyle = if (outline > 0f) Stroke(outline, join = StrokeJoin.Round) else null,
             // "tight": sin el relleno que la fuente añade arriba y abajo, que descentra las letras sueltas.
             platformStyle = if (tight) PlatformTextStyle(includeFontPadding = false) else null,

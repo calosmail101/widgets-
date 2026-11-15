@@ -22,10 +22,10 @@ entera con **sticks, cruceta y botones**, sin tocar la pantalla. También funcio
 - **Carrusel de Inicio**: la app enfocada queda en el centro, más grande; botón **Jugar** que abre tu frontend de juegos.
 - **Menús en ventanas flotantes** y transiciones de entrada entre pantallas.
 - **Sonido**: tres paquetes de efectos sintetizados (suave, arcade, mecánico) y **música de fondo** con tus propias canciones, solo en Inicio y en el cajón.
-- **Modos de la consola** (Retroid/AYN): rendimiento y ventilador desde el panel rápido, usando el servicio PServer del firmware. El formato de ese servicio está documentado por [ClusterTune](https://github.com/AurelioB/ClusterTune) (MIT, © Aurelio Bernal).
+- **Modos de la consola** (Retroid/AYN): rendimiento, ventilador, frecuencia de pantalla (60/120 Hz) y límite de carga al 80 % en BOOST; estilo de mando (Retro/Xbox) y modo de los gatillos (analógico, digital o ambos) en las cajitas de CNTRL. Todo usando el servicio PServer del firmware. El formato de ese servicio está documentado por [ClusterTune](https://github.com/AurelioB/ClusterTune) (MIT, © Aurelio Bernal).
 
 - **Estadísticas en juego**: con el servicio de accesibilidad activo, mantén **L1 + R1 + SELECT** en cualquier app para mostrar u ocultar una tira con FPS, temperaturas, uso de GPU, consumo y batería.
-- **Detector de mosaicos**: para modos que cada consola guarda a su manera (estilo de mando, gatillos), Heaven compara los ajustes del sistema antes y después de cambiar el mosaico de Android y aprende cuál es.
+- **Detector de mosaicos**: en consolas Retroid el estilo de mando y los gatillos ya vienen reconocidos; en otras, Heaven compara los ajustes del sistema antes y después de cambiar el mosaico de Android y aprende cuál es.
 
 ## Instalar
 

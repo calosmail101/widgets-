@@ -43,6 +43,11 @@ import dev.palanca.launcher.system.ActionId
 import dev.palanca.launcher.system.Actions
 import dev.palanca.launcher.system.SOUND_PACKS
 import dev.palanca.launcher.system.Trigger
+import dev.palanca.launcher.system.DeviceModes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed class SRow(val title: String)
 class Toggle(title: String, val get: (Config) -> Boolean, val set: (Config, Boolean) -> Config) : SRow(title)
@@ -56,6 +61,33 @@ class Range(
 ) : SRow(title)
 class Act(title: String, val value: () -> String = { "" }, val run: () -> Unit) : SRow(title)
 class Section(val title: String, val note: String, val rows: List<SRow>)
+
+/**
+ * Activa el puntero. Con PServer, Heaven lo hace solo (también levanta el bloqueo de «ajustes
+ * restringidos» de Android 13). Sin PServer, explica el camino y abre los ajustes de la app.
+ */
+private fun enablePointer() {
+    Env.scope.launch {
+        val sent = withContext(Dispatchers.IO) { DeviceModes.enablePointer() }
+        if (sent) {
+            // El sistema tarda un momento en arrancar el servicio.
+            repeat(12) { delay(250); if (Actions.pointerEnabled()) { Actions.toast("Puntero activado: mantén L3 + R3 en cualquier app"); return@launch } }
+        }
+        Actions.toast("Android lo bloquea: en Información de la app › ⋮ › «Permitir ajustes restringidos», y luego actívalo en Accesibilidad")
+        runCatching {
+            Env.ctx.startActivity(
+                android.content.Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${Env.ctx.packageName}"))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+}
+
+/** Versión instalada y compilación, para saber qué Heaven hay en la consola. */
+private fun versionText(): String = runCatching {
+    val info = Env.ctx.packageManager.getPackageInfo(Env.ctx.packageName, 0)
+    "${info.versionName} · compilación ${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)}"
+}.getOrDefault("?")
 
 private fun sections(): List<Section> = listOf(
     Section(
@@ -153,8 +185,8 @@ private fun sections(): List<Section> = listOf(
                     c.copy(shortcuts = c.shortcuts + (trigger.name to v))
                 }
             } + listOf(
-                Act("Puntero con mando", { if (Actions.pointerEnabled()) "activado" else "desactivado" }) {
-                    Actions.open(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                Act("Puntero con mando", { if (Actions.pointerEnabled()) "activado" else "pulsa A para activarlo" }) {
+                    if (Actions.pointerEnabled()) Actions.open(Settings.ACTION_ACCESSIBILITY_SETTINGS) else enablePointer()
                 },
                 Act("Botón del puntero", { Env.cfg.value.pointerKey.let { if (it == 0) "L3 + R3" else android.view.KeyEvent.keyCodeToString(it).removePrefix("KEYCODE_") } }) {
                     Env.nav.push(KeyCaptureScreen("Botón del puntero") { code -> Env.cfg.update { it.copy(pointerKey = code) } })
@@ -177,6 +209,7 @@ private fun sections(): List<Section> = listOf(
             Act("Ajustes de Android") { Actions.open(Settings.ACTION_SETTINGS) },
             Act("Recargar lista de apps") { Env.icons.clear(); Env.apps.reload() },
             Act("Memoria que usa Heaven", { "${android.os.Debug.getPss() / 1024} MB" }) { },
+            Act("Versión", { versionText() }) { },
             Act("Exportar diagnóstico del dispositivo", { "guardar .txt" }) { Diagnostics.export() },
         ),
     ),

@@ -130,6 +130,7 @@ object DeviceModes {
     fun learnedValue(l: dev.palanca.launcher.data.Learned): String? = runCatching {
         val cr = Env.ctx.contentResolver
         when {
+            l.kind == RETROID_PAD -> if (text("no_create_gamepad_button_layout") == "1") "-" else Settings.System.getString(cr, l.key)
             l.kind == "propiedad" -> Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, l.key) as String
             l.table == "secure" -> Settings.Secure.getString(cr, l.key)
             l.table == "global" -> Settings.Global.getString(cr, l.key)
@@ -137,11 +138,67 @@ object DeviceModes {
         }
     }.getOrNull()
 
-    fun setLearned(l: dev.palanca.launcher.data.Learned, value: String): Boolean =
-        if (l.kind == "propiedad") Privileged.run("setprop ${l.key} $value") else Privileged.run("cmd settings put ${l.table} ${l.key} $value")
+    fun setLearned(l: dev.palanca.launcher.data.Learned, value: String): Boolean = when (l.kind) {
+        // El estilo de mando de Retroid necesita dos claves a la vez (con una sola, el mando no cambia o
+        // el mosaico de Android se queda con el nombre viejo). Comprobado por ADB en una Pocket 6.
+        RETROID_PAD -> Privileged.run(
+            "sh -c \"cmd settings put system no_create_gamepad_button_layout 0; cmd settings put system flip_button_layout $value; " +
+                "cmd settings put system temp_abxy_layout_mode ${if (value == "1") 0 else 1}\"",
+        )
+        "propiedad" -> Privileged.run("setprop ${l.key} $value")
+        else -> Privileged.run("cmd settings put ${l.table} ${l.key} $value")
+    }
+
+    /**
+     * Controles que ya se conocen en las consolas Retroid, sin tener que enseñárselos a Heaven.
+     * Solo se usan si la consola tiene esas claves; si no, queda el detector.
+     */
+    fun builtin(id: String): dev.palanca.launcher.data.Learned? = when (id) {
+        "mando" -> if (text("flip_button_layout") != null && text("no_create_gamepad_button_layout") != null)
+            dev.palanca.launcher.data.Learned(RETROID_PAD, "system", "flip_button_layout", listOf("0", "1"), listOf("Retro", "Xbox")) else null
+        "gatillos" -> if (text("trigger_input_mode") != null)
+            dev.palanca.launcher.data.Learned("ajuste", "system", "trigger_input_mode", listOf("0", "1", "2"), listOf("Analógico", "Digital", "Ambos")) else null
+        else -> null
+    }
+    private const val RETROID_PAD = "retroid-mando"
 
     fun fanSpeed(): Int = read("fan_speed").coerceAtLeast(0)
     fun setFanSpeed(value: Int) = write("fan_speed", value)
+
+    // ---- Pantalla y carga (mosaicos Smooth Display y Charge limit de Retroid) ----
+
+    val REFRESH = listOf(60 to "60 Hz", 120 to "120 Hz")
+    /** -1 si la consola no expone la frecuencia como ajuste. */
+    fun refresh(): Int = text("peak_refresh_rate")?.toFloatOrNull()?.let { if (it > 90f) 120 else 60 } ?: -1
+    /** El mosaico de la consola escribe las dos claves a la vez, con 60.0 o 120.00001. */
+    fun setRefresh(hz: Int): Boolean {
+        val v = if (hz >= 120) "120.00001" else "60.0"
+        return Privileged.run("sh -c \"cmd settings put system peak_refresh_rate $v; cmd settings put system min_refresh_rate $v\"")
+    }
+
+    val CHARGE = listOf(0 to "Sin límite", 1 to "Hasta el 80 %")
+    fun chargeLimit(): Int = if (text("percent_80_charge_limit") == null) -1 else read("percent_80_charge_limit")
+    fun setChargeLimit(on: Int) = write("percent_80_charge_limit", on)
+
+    // ---- Puntero: activar el servicio de accesibilidad sin pasar por los ajustes de Android ----
+
+    /**
+     * Android 13 bloquea la accesibilidad de las apps instaladas fuera de la tienda («ajustes
+     * restringidos»). Con PServer, Heaven levanta ese bloqueo y añade su servicio a los que ya estén
+     * activos, sin quitar ninguno. Devuelve false si la consola no tiene PServer.
+     */
+    fun enablePointer(): Boolean {
+        val me = "${Env.ctx.packageName}/.system.PointerService"
+        val current = runCatching { Settings.Secure.getString(Env.ctx.contentResolver, "enabled_accessibility_services") }.getOrNull().orEmpty()
+        val list = current.split(':').filter { it.isNotBlank() && !it.endsWith("PointerService") } + me
+        // Tres comandos cortos: PServer no acepta más de 255 bytes por comando y la lista de servicios
+        // (por ejemplo, el Game Assistant de Retroid) ya ocupa bastante.
+        val services = "cmd settings put secure enabled_accessibility_services '${list.joinToString(":")}'"
+        if (services.toByteArray().size > 255) return false
+        return Privileged.run("appops set ${Env.ctx.packageName} ACCESS_RESTRICTED_SETTINGS allow") &&
+            Privileged.run(services) &&
+            Privileged.run("cmd settings put secure accessibility_enabled 1")
+    }
 }
 
 /** FPS reales de lo que haya en pantalla, a partir del contador de fotogramas del compositor de Android. */

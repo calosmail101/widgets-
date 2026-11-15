@@ -177,6 +177,8 @@ class QuickPanel : Screen, Closable {
     private var performance by mutableIntStateOf(DeviceModes.performance())
     private var fan by mutableIntStateOf(DeviceModes.fan())
     private var fanSpeed by mutableIntStateOf(DeviceModes.fanSpeed())
+    private var refresh by mutableIntStateOf(DeviceModes.refresh())
+    private var charge by mutableIntStateOf(DeviceModes.chargeLimit())
     private val clusterTune = Env.apps.apps.value.firstOrNull { it.pkg == "com.aure.clustertune" }
     private val jobs = HashMap<String, Job>()
 
@@ -189,6 +191,8 @@ class QuickPanel : Screen, Closable {
         if (fan >= 0) add("ventilador")
         // La velocidad está siempre en la lista (solo actúa en Personalizado): así la ventana no cambia de tamaño.
         if (fan >= 0) add("velocidad")
+        if (refresh >= 0) add("pantalla")
+        if (charge >= 0) add("carga")
         if (clusterTune != null) add("clustertune")
     }
     private fun rows() = if (side == 0) system else console()
@@ -224,13 +228,17 @@ class QuickPanel : Screen, Closable {
             "rendimiento" -> change("perf", next(DeviceModes.PERFORMANCE, performance), { performance = it }, DeviceModes::setPerformance, DeviceModes::performance)
             "ventilador" -> change("fan", next(DeviceModes.FAN, fan), { fan = it }, DeviceModes::setFan, DeviceModes::fan)
             "velocidad" -> if (fan == 6) change("speed", (fanSpeed + dir * (if (kotlin.math.abs(delta) > 5) 5 else 1)).coerceIn(0, 100), { fanSpeed = it }, DeviceModes::setFanSpeed, DeviceModes::fanSpeed)
+            "pantalla" -> change("hz", next(DeviceModes.REFRESH, refresh), { refresh = it }, DeviceModes::setRefresh, DeviceModes::refresh)
+            "carga" -> change("charge", if (charge == 1) 0 else 1, { charge = it }, DeviceModes::setChargeLimit, DeviceModes::chargeLimit)
         }
     }
 
     private fun activate(row: String) {
         when (row) {
             "brillo" -> if (!Actions.canWriteSettings()) Actions.askWriteSettings()
-            "rendimiento", "ventilador", "velocidad" -> adjust(+5)
+            "rendimiento", "ventilador", "velocidad", "carga" -> adjust(+5)
+            // A alterna entre 60 y 120 Hz (las flechas eligen uno u otro).
+            "pantalla" -> change("hz", if (refresh == 120) 60 else 120, { refresh = it }, DeviceModes::setRefresh, DeviceModes::refresh)
             "cajas" -> openBox(boxes[box])
             "wifi" -> if (!Actions.open(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)) Actions.open(Settings.ACTION_WIFI_SETTINGS)
             "bluetooth" -> Actions.open(Settings.ACTION_BLUETOOTH_SETTINGS)
@@ -248,7 +256,7 @@ class QuickPanel : Screen, Closable {
         }
     }
 
-    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad")
+    private fun adjustable(row: String?) = row in setOf("brillo", "volumen", "rendimiento", "ventilador", "velocidad", "pantalla", "carga")
     private fun switchSide(to: Int) { if (to == 0 || console().isNotEmpty()) { side = to; sel = 0 } }
 
     override fun onPad(e: PadEvent): Boolean {
@@ -324,6 +332,8 @@ class QuickPanel : Screen, Closable {
                                 "rendimiento" -> ListRow("Modo", DeviceModes.name(DeviceModes.PERFORMANCE, performance), on, tap, arrows = true)
                                 "ventilador" -> ListRow("Ventilador", DeviceModes.name(DeviceModes.FAN, fan), on, tap, arrows = true)
                                 "velocidad" -> Box(Modifier.alpha(if (fan == 6) 1f else 0.4f)) { Slider(if (fan == 6) "Velocidad del ventilador" else "Velocidad (solo en Personalizado)", fanSpeed, on, tap) }
+                                "pantalla" -> ListRow("Pantalla", DeviceModes.name(DeviceModes.REFRESH, refresh), on, tap, arrows = true)
+                                "carga" -> ListRow("Límite de carga al 80 %", "", on, tap) { DropSwitch(charge == 1) }
                                 else -> ListRow("ClusterTune · límites de CPU y GPU", "", on, tap)
                             }
                             Spacer(Modifier.height(4.dp))
@@ -479,14 +489,16 @@ class LearnedScreen(
     private var note by mutableStateOf("")
     private val photos = ArrayList<Map<String, String>>()
     private var captured by mutableIntStateOf(0)
-    private var value by mutableStateOf(Env.cfg.value.learned[id]?.let(DeviceModes::learnedValue))
+
+    /** En consolas Retroid el control ya se conoce: no hace falta enseñárselo a Heaven. */
+    private val known = DeviceModes.builtin(id)
+    private fun learned() = known ?: Env.cfg.value.learned[id]
+    private var value by mutableStateOf(learned()?.let(DeviceModes::learnedValue))
 
     init {
         // El foco empieza en el estado que está activo ahora.
-        Env.cfg.value.learned[id]?.states()?.indexOfFirst { it.first == value }?.takeIf { it >= 0 }?.let { cursor = it }
+        learned()?.states()?.indexOfFirst { it.first == value }?.takeIf { it >= 0 }?.let { cursor = it }
     }
-
-    private fun learned() = Env.cfg.value.learned[id]
 
     private fun choose() {
         val l = learned() ?: return
@@ -538,7 +550,7 @@ class LearnedScreen(
             Btn.RIGHT -> if (l != null) cursor = (cursor + 1).coerceAtMost(l.states().lastIndex)
             Btn.A -> if (l != null) choose() else capture()
             // X olvida lo aprendido para poder repetir la detección.
-            Btn.X -> if (l != null) { Env.cfg.update { it.copy(learned = it.learned - id) }; photos.clear(); captured = 0; note = "" }
+            Btn.X -> if (l != null && known == null) { Env.cfg.update { it.copy(learned = it.learned - id) }; photos.clear(); captured = 0; note = "" }
             else -> Unit
         }
         return true
@@ -547,7 +559,7 @@ class LearnedScreen(
     @Composable
     override fun Content() {
         val accent = LocalAccent.current
-        val l = LocalCfg.current.learned[id]
+        val l = known ?: LocalCfg.current.learned[id]
         Popup(TransformOrigin(0.3f, 0.7f), closing, { Env.nav.pop() }) {
             Window(Modifier.align(Alignment.Center).width(760.dp)) {
                 T(title, 24, weight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp))
@@ -579,7 +591,7 @@ class LearnedScreen(
                     )
                     if (note.isNotEmpty()) T(note, 13, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp, top = 6.dp, end = 8.dp))
                     Spacer(Modifier.height(8.dp))
-                    HintBar(listOf("A" to "Elegir", "◀ ▶" to "Mover", "X" to "Volver a detectar", "B" to "Cerrar"))
+                    HintBar(listOf("A" to "Elegir", "◀ ▶" to "Mover") + (if (known == null) listOf("X" to "Volver a detectar") else emptyList()) + listOf("B" to "Cerrar"))
                 } else {
                     T(
                         if (busy) note

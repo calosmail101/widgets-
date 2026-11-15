@@ -204,6 +204,8 @@ class IconRenderer(private val ctx: Context, val packs: IconPacks) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
     fun clear() { cache.evictAll(); packs.invalidate() }
+    /** Solo suelta los iconos ya dibujados (se vuelven a dibujar al volver); los paquetes se conservan. */
+    fun trim() = cache.evictAll()
     fun cached(key: String): ImageBitmap? = cache.get(key)
 
     fun keyFor(app: AppEntry, cfg: Config, px: Int, generation: Int): String {
