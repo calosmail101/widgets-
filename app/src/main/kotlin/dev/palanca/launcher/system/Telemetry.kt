@@ -108,12 +108,28 @@ object Telemetry {
     private fun zones(match: (String) -> Boolean): List<String> =
         File("/sys/class/thermal").listFiles { f -> f.name.startsWith("thermal_zone") }.orEmpty()
             .filter { z -> runCatching { match(File(z, "type").readText().trim().lowercase()) }.getOrDefault(false) }
-            .map { it.path + "/temp" }.filter { readLong(it) != null }.take(8)
+            .map { it.path + "/temp" }.filter { readLong(it) != null }
 
+    /** Media suavizada por grupo de sensores (°C). Los sensores por núcleo saltan >10 °C en milisegundos. */
+    private val smoothed = java.util.concurrent.ConcurrentHashMap<List<String>, Pair<Float, Long>>()
+
+    /**
+     * Temperatura del chip: MEDIA de todos sus sensores, suavizada (~2 s), en lugar del máximo instantáneo
+     * de unos pocos núcleos. El aviso usa el pico real, para no esconder un sobrecalentamiento.
+     */
     private fun temperature(paths: List<String>): Reading {
-        val raw = paths.mapNotNull(::readLong).maxOrNull() ?: return Reading.NONE
-        val c = if (raw > 1000) raw / 1000f else raw.toFloat()
-        return Reading(c.roundToInt().toString(), "°C", ((c - 25f) / 60f).coerceIn(0f, 1f), if (c >= 75) "caliente" else "")
+        val vals = paths.mapNotNull(::readLong).map { if (it > 1000) it / 1000f else it.toFloat() }.filter { it in 1f..150f }
+        if (vals.isEmpty()) return Reading.NONE
+        val mean = vals.average().toFloat()
+        val now = android.os.SystemClock.elapsedRealtime()
+        val c = smoothed[paths]?.let { (prev, t) ->
+            val k = 1f - kotlin.math.exp(-(now - t).coerceAtLeast(0L) / 2000f)   // constante de 2 s, sea cual sea el muestreo
+            prev + (mean - prev) * k
+        } ?: mean
+        smoothed[paths] = c to now
+        val peak = vals.max()
+        return Reading(c.roundToInt().toString(), "°C", ((c - 25f) / 60f).coerceIn(0f, 1f),
+            if (peak >= 85f) "pico ${peak.roundToInt()}°" else if (c >= 75f) "caliente" else "")
     }
 
     private fun volume(path: File, detail: String): Reading {
