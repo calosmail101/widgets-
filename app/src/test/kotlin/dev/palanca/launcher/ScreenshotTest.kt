@@ -22,6 +22,7 @@ import dev.palanca.launcher.ui.HomeScreen
 import dev.palanca.launcher.ui.IconEditorScreen
 import dev.palanca.launcher.ui.KeyboardScreen
 import dev.palanca.launcher.ui.PalancaRoot
+import dev.palanca.launcher.ui.ProfileScreen
 import dev.palanca.launcher.ui.QuickPanel
 import dev.palanca.launcher.ui.Screen
 import dev.palanca.launcher.ui.SettingsScreen
@@ -155,4 +156,6 @@ class ScreenshotTest {
     @Test fun buscar() = shot("6-buscar", KeyboardScreen.search(), pad = listOf(Btn.RIGHT, Btn.RIGHT, Btn.RIGHT, Btn.A, Btn.LEFT, Btn.A, Btn.UP, Btn.UP, Btn.RIGHT))
     @Test fun panel() = shot("7-panel-rapido", QuickPanel(), pad = listOf(Btn.DOWN))
     @Test fun widgets() = shot("8-widgets", pad = listOf(Btn.R1))
+    // Módulo 17: perfil por juego con Heaven FG (fila «Generación de fotogramas» en x3).
+    @Test fun perfilFg() = shot("17-perfil-fg", ProfileScreen(apps.first { it.label == "Dolphin" }), pad = listOf(Btn.DOWN, Btn.DOWN, Btn.DOWN, Btn.RIGHT, Btn.RIGHT, Btn.RIGHT))
 }

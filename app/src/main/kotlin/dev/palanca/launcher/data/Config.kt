@@ -121,11 +121,12 @@ data class Config(
 
 /**
  * Ajustes de la consola para una app. null = no tocar ese ajuste.
- * performance: 0/1/2 · fan: 4 Smart, 5 Sport, 6 Personalizado · hz: 60/120.
+ * performance: 0/1/2 · fan: 4 Smart, 5 Sport, 6 Personalizado · hz: 60/120 ·
+ * fg: multiplicador de Heaven FG (1 apagado, 2, 3; solo actúa si el juego usa ese driver).
  */
 @Serializable
-data class Profile(val performance: Int? = null, val fan: Int? = null, val fanSpeed: Int? = null, val hz: Int? = null) {
-    fun isEmpty() = performance == null && fan == null && hz == null
+data class Profile(val performance: Int? = null, val fan: Int? = null, val fanSpeed: Int? = null, val hz: Int? = null, val fg: Int? = null) {
+    fun isEmpty() = performance == null && fan == null && hz == null && fg == null
 }
 
 /**

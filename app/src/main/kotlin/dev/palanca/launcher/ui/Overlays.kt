@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.LaunchedEffect
 import dev.palanca.launcher.system.DeviceModes
+import dev.palanca.launcher.system.FrameGen
 import dev.palanca.launcher.system.Privileged
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -375,11 +376,12 @@ fun profileSummary(p: dev.palanca.launcher.data.Profile?): String {
         p.performance?.let { DeviceModes.name(DeviceModes.PERFORMANCE, it).replace(" performance", "") },
         p.fan?.let { DeviceModes.name(DeviceModes.FAN, it) },
         p.hz?.let { "$it Hz" },
+        p.fg?.let { if (it == 1) "sin FG" else "FG ${FrameGen.name(it)}" },
     ).joinToString(" · ")
 }
 
 /**
- * Perfil de la consola para una app: modo, ventilador y frecuencia de pantalla que se ponen al abrirla
+ * Perfil de la consola para una app: modo, ventilador, frecuencia de pantalla y Heaven FG que se ponen al abrirla
  * (también desde Cocoon u otro frontend) y se deshacen al volver. «Sin cambiar» deja ese ajuste como esté.
  */
 class ProfileScreen(private val app: AppEntry) : Screen, Closable {
@@ -392,7 +394,8 @@ class ProfileScreen(private val app: AppEntry) : Screen, Closable {
     private val perfOptions = listOf<Int?>(null) + DeviceModes.PERFORMANCE.map { it.first }
     private val fanOptions = listOf<Int?>(null) + DeviceModes.FAN.map { it.first }
     private val hzOptions = listOf<Int?>(null) + DeviceModes.REFRESH.map { it.first }
-    private fun rows() = buildList { add("modo"); add("ventilador"); if (p.fan == 6) add("velocidad"); add("pantalla") }
+    private val fgOptions = listOf<Int?>(null) + FrameGen.MODES.map { it.first }
+    private fun rows() = buildList { add("modo"); add("ventilador"); if (p.fan == 6) add("velocidad"); add("pantalla"); add("fg") }
 
     private fun <T> cycle(options: List<T>, current: T, dir: Int): T =
         options[(options.indexOf(current).coerceAtLeast(0) + dir + options.size) % options.size]
@@ -407,6 +410,7 @@ class ProfileScreen(private val app: AppEntry) : Screen, Closable {
             "ventilador" -> p.copy(fan = cycle(fanOptions, p.fan, dir)).let { if (it.fan == 6 && it.fanSpeed == null) it.copy(fanSpeed = 50) else it }
             "velocidad" -> p.copy(fanSpeed = ((p.fanSpeed ?: 50) + dir * 5).coerceIn(0, 100))
             "pantalla" -> p.copy(hz = cycle(hzOptions, p.hz, dir))
+            "fg" -> p.copy(fg = cycle(fgOptions, p.fg, dir))
             else -> p
         }
         save()
@@ -438,7 +442,7 @@ class ProfileScreen(private val app: AppEntry) : Screen, Closable {
                     Spacer(Modifier.width(14.dp))
                     T("Perfil · ${app.label}", 24, weight = FontWeight.Medium)
                 }
-                T("Se aplica al abrir la app (también desde Cocoon) y se deshace al volver a Heaven.", 14, P.Dim, maxLines = 2, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
+                T("Se aplica al abrir la app (también desde Cocoon) y se deshace al volver a Heaven. La generación de fotogramas solo actúa si el juego usa el driver Heaven FG.", 14, P.Dim, maxLines = 3, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
                 rows().forEachIndexed { i, r ->
                     val on = i == row
                     val tap = Modifier.tap { row = i; change(+1) }
@@ -450,6 +454,7 @@ class ProfileScreen(private val app: AppEntry) : Screen, Closable {
                             Spacer(Modifier.width(14.dp))
                             DropSlider((p.fanSpeed ?: 50) / 100f, if (on) accent else P.Dim, Modifier.width(200.dp))
                         }
+                        "fg" -> ListRow("Generación de fotogramas (Heaven FG)", p.fg?.let { FrameGen.name(it) } ?: "Por defecto (x2)", on, tap, arrows = true)
                         else -> ListRow("Pantalla", p.hz?.let { "$it Hz" } ?: "Sin cambiar", on, tap, arrows = true)
                     }
                     Spacer(Modifier.height(4.dp))

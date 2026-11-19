@@ -20,7 +20,9 @@ object Profiles {
     /** App con el perfil aplicado ahora mismo, y los ajustes que había antes de aplicarlo. */
     private var active: String? = null
     private var saved: Profile? = null
-    private var current: String? = null
+    /** App en primer plano (sin contar las capas pasajeras de [TRANSIENT]): el juego, para el panel rápido. */
+    var current: String? = null
+        private set
 
     /** Paquetes que aparecen encima de un juego sin que se salga de él: no cuentan como cambio de app. */
     private val TRANSIENT = setOf(
@@ -42,6 +44,9 @@ object Profiles {
             }
             profile == null && active != null -> restore()
         }
+        // Heaven FG: el multiplicador del perfil de este juego, o el del driver (propiedad vacía) en los demás.
+        val fg = profile?.fg
+        io.execute { FrameGen.set(fg) }
         if (!ownLauncher) startHeatWatch() else stopHeatWatch()
     }
 
@@ -51,6 +56,12 @@ object Profiles {
         fanSpeed = DeviceModes.fanSpeed(),
         hz = DeviceModes.refresh().takeIf { it > 0 },
     )
+
+    /** El panel rápido cambió el FG del juego en marcha: se guarda en su perfil para la próxima vez. */
+    fun saveFrameGen(pkg: String, mult: Int) = Env.cfg.update { c ->
+        val p = (c.profiles[pkg] ?: Profile()).copy(fg = mult.takeIf { it != FrameGen.DEFAULT })
+        c.copy(profiles = if (p.isEmpty()) c.profiles - pkg else c.profiles + (pkg to p))
+    }
 
     private fun apply(p: Profile) {
         p.performance?.let { DeviceModes.setPerformance(it) }

@@ -14,8 +14,9 @@ import dev.palanca.launcher.Env
 import java.util.concurrent.Executors
 
 /**
- * Panel rápido dentro del juego (L1 + R1 + X): modo de rendimiento, ventilador, frecuencia de pantalla
- * y brillo sin salir del juego. Mientras está abierto, la cruceta y B lo manejan a él y no llegan al juego.
+ * Panel rápido dentro del juego (L1 + R1 + X): modo de rendimiento, ventilador, frecuencia de pantalla,
+ * brillo y, si el juego usa el driver Heaven FG, la generación de fotogramas, sin salir del juego.
+ * Mientras está abierto, la cruceta y B lo manejan a él y no llegan al juego.
  */
 class GamePanel(private val service: AccessibilityService) {
     private val wm = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -27,6 +28,10 @@ class GamePanel(private val service: AccessibilityService) {
     private var fan = 0
     private var hz = 0
     private var brightness = 0
+    // Heaven FG: solo se muestra si el juego en marcha tiene cargado ese driver (se comprueba al abrir).
+    private var game: String? = null
+    private var fgLoaded = false
+    private var fg = FrameGen.DEFAULT
 
     val open get() = view != null
 
@@ -34,6 +39,7 @@ class GamePanel(private val service: AccessibilityService) {
         if (performance >= 0) add("modo")
         if (fan >= 0) add("ventilador")
         if (hz > 0) add("pantalla")
+        if (fgLoaded) add("fg")
         add("brillo")
     }
 
@@ -43,10 +49,13 @@ class GamePanel(private val service: AccessibilityService) {
         if (!Env.ready) return
         performance = DeviceModes.performance(); fan = DeviceModes.fan(); hz = DeviceModes.refresh(); brightness = Actions.brightness()
         row = 0
+        // El juego: el que vio Profiles (si Heaven acaba de arrancar aún no lo sabe: se pregunta al sistema abajo).
+        game = Profiles.current?.takeIf { it != Env.ctx.packageName }
+        fgLoaded = false; fg = game?.let { Env.cfg.value.profiles[it]?.fg } ?: FrameGen.DEFAULT
         val d = service.resources.displayMetrics.density
         val v = PanelView(service)
         val lp = WindowManager.LayoutParams(
-            (360 * d).toInt(), ((58 + rows().size * 44) * d).toInt(), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            (360 * d).toInt(), height(), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             // Con foco: la cruceta de la Pocket 6 son ejes (HAT) y Android solo los convierte en flechas para la
             // ventana enfocada. Mientras el panel está abierto, el juego no recibe la cruceta.
             // Sin FLAG_NOT_TOUCHABLE: Android limita al 80 % la opacidad de las capas que no aceptan toques y el
@@ -58,7 +67,21 @@ class GamePanel(private val service: AccessibilityService) {
             alpha = 1f; windowAnimations = 0
         }
         if (runCatching { wm.addView(v, lp) }.isSuccess) { view = v; v.requestFocus() }
+        val known = game
+        io.execute {
+            val g = known ?: FrameGen.foreground()?.takeIf { it != Env.ctx.packageName } ?: return@execute
+            val loaded = FrameGen.loadedIn(g)
+            v.post {
+                if (!loaded || view !== v) return@post
+                if (game == null) { game = g; fg = Env.cfg.value.profiles[g]?.fg ?: FrameGen.DEFAULT }
+                fgLoaded = true
+                runCatching { lp.height = height(); wm.updateViewLayout(v, lp) }
+                redraw()
+            }
+        }
     }
+
+    private fun height() = ((58 + rows().size * 44) * service.resources.displayMetrics.density).toInt()
 
     fun close() {
         view?.let { runCatching { wm.removeView(it) } }
@@ -92,6 +115,11 @@ class GamePanel(private val service: AccessibilityService) {
             "modo" -> { performance = cycle(DeviceModes.PERFORMANCE, performance, dir); val v = performance; io.execute { DeviceModes.setPerformance(v) } }
             "ventilador" -> { fan = cycle(DeviceModes.FAN, fan, dir); val v = fan; io.execute { DeviceModes.setFan(v) } }
             "pantalla" -> { hz = if (hz == 120) 60 else 120; val v = hz; io.execute { DeviceModes.setRefresh(v) } }
+            "fg" -> {
+                fg = cycle(FrameGen.MODES, fg, dir); val v = fg
+                io.execute { FrameGen.set(v) }
+                game?.let { Profiles.saveFrameGen(it, v) }
+            }
             "brillo" -> if (Actions.canWriteSettings()) { brightness = (brightness + dir * 10).coerceIn(1, 100); Actions.setBrightness(brightness) }
         }
         redraw()
@@ -103,10 +131,11 @@ class GamePanel(private val service: AccessibilityService) {
         "modo" -> DeviceModes.name(DeviceModes.PERFORMANCE, performance)
         "ventilador" -> DeviceModes.name(DeviceModes.FAN, fan)
         "pantalla" -> "$hz Hz"
+        "fg" -> FrameGen.name(fg)
         else -> if (Actions.canWriteSettings()) "$brightness %" else "sin permiso"
     }
 
-    private fun title(r: String) = when (r) { "modo" -> "Modo"; "ventilador" -> "Ventilador"; "pantalla" -> "Pantalla"; else -> "Brillo" }
+    private fun title(r: String) = when (r) { "modo" -> "Modo"; "ventilador" -> "Ventilador"; "pantalla" -> "Pantalla"; "fg" -> "Generación de fotogramas"; else -> "Brillo" }
 
     private inner class PanelView(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
